@@ -1,10 +1,12 @@
 // Estadísticas: dos vistas — "Mes" (cómo fue el mes) y "Flujo" (patrimonio en el
 // tiempo con los movimientos futuros que el usuario registra manualmente).
-import { html, useState, useEffect, useMemo } from '../../vendor/preact-standalone.module.js';
+// La gráfica de flujo es interactiva: arrastra para mover, pellizca/botones para
+// zoom, con granularidad hasta diaria, y lectura al tocar.
+import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
-import { statsMes, tendencia, patrimonio, saldoConvertido, flujoEfectivo, fechasRepetir, TIPOS_CUENTA } from '../model.js';
-import { Sheet } from '../ui.js';
+import { statsMes, tendencia, patrimonio, saldoConvertido, flujoEfectivo, fechasRepetir, convertir, TIPOS_CUENTA } from '../model.js';
+import { Sheet, PickerCuentas } from '../ui.js';
 import { fmtConMoneda, fmtMonto, textoAEntero, enteroATexto, uid, isoDia, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
 export default function Estadisticas() {
@@ -133,18 +135,30 @@ function VistaMes({ S, todo }) {
 function VistaFlujo({ S, todo }) {
   const principal = S.ajustes.monedaPrincipal;
   const [horizonte, setHorizonte] = useState(6);
-  const [editor, setEditor] = useState(null); // {} nueva | futuro a editar
+  const [cuentaScope, setCuentaScope] = useState(null); // null = patrimonio
+  const [editor, setEditor] = useState(null);
 
   const fl = useMemo(() => flujoEfectivo({
     cuentas: S.cuentas, txs: todo, tasas: S.tasas, principal,
-    futuros: S.futuros, pasadoMeses: 6, futuroMeses: horizonte
-  }), [S.cuentas, todo, S.tasas, S.futuros, horizonte]);
+    futuros: S.futuros, pasadoMeses: 6, futuroMeses: horizonte, cuentaId: cuentaScope
+  }), [S.cuentas, todo, S.tasas, S.futuros, horizonte, cuentaScope]);
 
   const final = fl.serie.at(-1);
+  const nombreScope = cuentaScope ? (S.cuentas.find(c => c.id === cuentaScope)?.nombre || '') : null;
 
   return html`<div>
+    <div class="chips-scroll" style=${{ marginBottom: '10px' }}>
+      <button class=${'chip' + (!cuentaScope ? ' sel' : '')} onClick=${() => setCuentaScope(null)}>🌏 Patrimonio</button>
+      ${S.cuentas.filter(c => !c.archivada).map(c => html`
+        <button key=${c.id} class=${'chip' + (cuentaScope === c.id ? ' sel' : '')} onClick=${() => setCuentaScope(c.id)}>
+          ${TIPOS_CUENTA[c.tipo].emoji} ${c.nombre}
+        </button>`)}
+    </div>
+
     <div class="tarjeta" style=${{ textAlign: 'center', padding: '18px 14px' }}>
-      <div style=${{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Hoy tienes</div>
+      <div style=${{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+        ${nombreScope ? `Hoy en ${nombreScope}` : 'Hoy tienes'}
+      </div>
       <div class="num" style=${{ fontSize: '30px', fontWeight: 800 }}>${fmtConMoneda(fl.balanceHoy, principal)}</div>
       <div style=${{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '10px' }}>
         ${[3, 6, 12].map(m => html`<button key=${m} class=${'chip' + (m === horizonte ? ' sel' : '')}
@@ -164,9 +178,9 @@ function VistaFlujo({ S, todo }) {
     </div>
 
     <div class="tarjeta">
-      <h3>Tu patrimonio en el tiempo</h3>
+      <h3>Arrastra, pellizca o usa ± para explorar</h3>
       <${ChartFlujo} fl=${fl} principal=${principal} />
-      <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '4px' }}>
+      <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
         <span>▬ Real</span><span>┄ Registrado por ti</span>
       </div>
     </div>
@@ -177,22 +191,26 @@ function VistaFlujo({ S, todo }) {
         <button class="chip" onClick=${() => setEditor({ tipo: 'ingreso', moneda: principal, fecha: isoDia() })}>＋ Agregar</button>
       </div>
       ${fl.lista.map(f => html`<div key=${f.id} class="fila" onClick=${() => setEditor(f)}>
-        <span class="emoji">${f.tipo === 'ingreso' ? '💰' : '🔻'}</span>
+        <span class="emoji">${f.tipo === 'ingreso' ? '💰' : f.tipo === 'gasto' ? '🔻' : '🔁'}</span>
         <div class="cuerpo">
-          <div class="titulo">${f.nombre || (f.tipo === 'ingreso' ? 'Ingreso' : 'Gasto')}</div>
+          <div class="titulo">${f.tipo === 'transferencia'
+            ? `${S.cuentas.find(c => c.id === f.cuenta)?.nombre || '?'} → ${S.cuentas.find(c => c.id === f.cuentaDestino)?.nombre || '?'}`
+            : (f.nombre || (f.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'))}</div>
           <div class="sub">${fmtFechaCorta(f.fecha)} · después: ${fmtConMoneda(f.balanceDespues, principal)}</div>
         </div>
-        <div class="monto num ${f.tipo === 'ingreso' ? 'm-ingreso' : 'm-gasto'}">${f.tipo === 'ingreso' ? '+' : '−'}${fmtConMoneda(f.monto, f.moneda)}</div>
+        <div class=${'monto num ' + (f.tipo === 'ingreso' ? 'm-ingreso' : f.tipo === 'gasto' ? 'm-gasto' : 'm-transf')}>
+          ${f.tipo === 'ingreso' ? '+' : f.tipo === 'gasto' ? '−' : '→ '}${fmtConMoneda(f.monto, f.moneda)}
+        </div>
       </div>`)}
       ${fl.lista.length === 0 && html`<div class="vacio">
-        Registra lo que sabes que viene: "15 — salario +Q8,000", "31 — salario", "12 — +Q400"…<br/>
+        Registra lo que sabes que viene: "15 — salario +Q8,000", "20 — pago tarjeta", "12 — +Q400"…<br/>
         La línea punteada te mostrará cuánto tendrás en cada fecha.
       <//>`}
       ${fl.vencidos.length > 0 && html`<div class="dato-cuenta" style=${{ marginTop: '8px' }}>
         ${fl.vencidos.length} registro(s) con fecha pasada. Si ya ocurrieron, regístralos con ＋ y bórralos de aquí.
       <//>`}
       <div class="dato-cuenta" style=${{ marginTop: '8px' }}>
-        Esto no es una predicción: son <b>tus registros</b>. La línea sólida es tu historia real; la punteada, lo que tú anotaste que viene.
+        Esto no es una predicción: son <b>tus registros</b>. La línea sólida es tu historia real; la punteada, lo que anotaste que viene.
       </div>
     </div>
 
@@ -207,20 +225,32 @@ function EditorFuturo({ f, S, cerrar }) {
   const [d, setD] = useState({
     nombre: f.nombre || '', tipo: f.tipo || 'ingreso',
     monto: f.monto ? enteroATexto(f.monto, 2) : '', moneda: f.moneda || S.ajustes.monedaPrincipal,
-    fecha: f.fecha || isoDia(), repetir: 'unica'
+    fecha: f.fecha || isoDia(), repetir: 'unica',
+    cuenta: f.cuenta || null, cuentaDestino: f.cuentaDestino || null
   });
+  const [picker, setPicker] = useState(null); // 'cuenta' | 'destino'
   const set = p => setD({ ...d, ...p });
+  const cuentaObj = S.cuentas.find(c => c.id === d.cuenta);
+  const destinoObj = S.cuentas.find(c => c.id === d.cuentaDestino);
 
   const guardar = async () => {
     const monto = textoAEntero(d.monto || '0', 2);
     if (!monto) { toast('Escribe el monto'); return; }
     if (!d.fecha) { toast('Elige la fecha'); return; }
     if (d.fecha <= isoDia() && !f.id) { toast('La fecha debe ser futura'); return; }
+    if (d.tipo === 'transferencia') {
+      if (!cuentaObj || !destinoObj || cuentaObj.id === destinoObj.id) { toast('Elige las dos cuentas (distintas)'); return; }
+    }
     const fechas = f.id ? [d.fecha] : fechasRepetir(d.fecha, d.repetir, d.repetir === 'unica' ? 1 : 6);
+    const distinta = d.tipo === 'transferencia' && destinoObj && cuentaObj && destinoObj.moneda !== cuentaObj.moneda;
     for (const fecha of fechas) {
       await fin.guardarFuturo({
         id: f.id && fechas.length === 1 ? f.id : uid(),
         nombre: d.nombre.trim() || null, tipo: d.tipo, monto, moneda: d.moneda, fecha,
+        cuenta: d.tipo === 'transferencia' ? cuentaObj?.id : (d.tipo === 'gasto' || d.tipo === 'ingreso' ? d.cuenta : null),
+        cuentaDestino: d.tipo === 'transferencia' ? destinoObj?.id : null,
+        montoDestino: distinta ? convertir(monto, cuentaObj.moneda, destinoObj.moneda, S.tasas, isoDia()) : null,
+        monedaDestino: distinta ? destinoObj.moneda : null,
         creadoEn: f.creadoEn || new Date().toISOString()
       });
     }
@@ -241,9 +271,11 @@ function EditorFuturo({ f, S, cerrar }) {
     <div class="segmentado" style=${{ marginBottom: '10px' }}>
       <button class=${d.tipo === 'ingreso' ? 'sel' : ''} onClick=${() => set({ tipo: 'ingreso' })}>💰 Ingreso</button>
       <button class=${d.tipo === 'gasto' ? 'sel' : ''} onClick=${() => set({ tipo: 'gasto' })}>🔻 Gasto</button>
+      <button class=${d.tipo === 'transferencia' ? 'sel' : ''} onClick=${() => set({ tipo: 'transferencia' })}>🔁 Transferencia</button>
     </div>
     <div style=${{ display: 'grid', gap: '8px' }}>
-      <input placeholder="Nombre (ej. Salario, Alquiler…)" value=${d.nombre} onInput=${e => set({ nombre: e.target.value })} />
+      ${d.tipo !== 'transferencia' && html`<input placeholder="Nombre (ej. Salario, Alquiler…)" value=${d.nombre}
+        onInput=${e => set({ nombre: e.target.value })} />`}
       <div style=${{ display: 'flex', gap: '8px' }}>
         <input style=${{ flex: 1, textAlign: 'right', fontWeight: 700 }} inputMode="decimal" placeholder="0.00"
           value=${d.monto} onInput=${e => set({ monto: e.target.value })} />
@@ -252,6 +284,24 @@ function EditorFuturo({ f, S, cerrar }) {
             onClick=${() => set({ moneda: m })}>${m}</button>`)}
         <//>
       <//>
+
+      ${d.tipo === 'transferencia' ? html`<div>
+        <div class="dato-cuenta">Desde → hacia</div>
+        <div class="chips-scroll" style=${{ marginTop: '6px' }}>
+          <button class="chip" onClick=${() => setPicker('cuenta')}>${cuentaObj ? `${TIPOS_CUENTA[cuentaObj.tipo].emoji} ${cuentaObj.nombre}` : '¿Desde qué cuenta?'}</button>
+          <span style=${{ alignSelf: 'center', color: 'var(--muted)' }}>→</span>
+          <button class="chip" onClick=${() => setPicker('destino')}>${destinoObj ? `${TIPOS_CUENTA[destinoObj.tipo].emoji} ${destinoObj.nombre}` : '¿Hacia dónde?'}</button>
+        <//>
+      <//>` : html`<div>
+        <div class="dato-cuenta">Cuenta (opcional — hace la proyección por cuenta más exacta)</div>
+        <div class="chips-scroll" style=${{ marginTop: '6px' }}>
+          <button class="chip" onClick=${() => setPicker('cuenta')}>
+            ${cuentaObj ? `${TIPOS_CUENTA[cuentaObj.tipo].emoji} ${cuentaObj.nombre}` : 'Cualquiera'}
+          </button>
+          ${d.cuenta && html`<button class="chip" onClick=${() => set({ cuenta: null })}>✕</button>`}
+        <//>
+      <//>`}
+
       <div>
         <div class="dato-cuenta">¿Cuándo?</div>
         <input type="date" value=${d.fecha} onChange=${e => set({ fecha: e.target.value || isoDia() })} />
@@ -266,49 +316,169 @@ function EditorFuturo({ f, S, cerrar }) {
     </div>
     <button class="btn btn-primario" style=${{ marginTop: '12px' }} onClick=${guardar}>Guardar</button>
     ${f.id && html`<button class="btn btn-rojo" style=${{ marginTop: '8px' }} onClick=${borrar}>Eliminar</button>`}
+
+    ${picker && html`<${PickerCuentas}
+      titulo=${d.tipo === 'transferencia' ? (picker === 'cuenta' ? '¿Desde qué cuenta?' : '¿Hacia qué cuenta?') : '¿Con qué cuenta?'}
+      cuentas=${S.cuentas} txs=${[]} tasas=${S.tasas}
+      excluir=${d.tipo === 'transferencia' && picker === 'destino' ? d.cuenta : null}
+      onPick=${c => { setPicker(null); set(picker === 'destino' ? { cuentaDestino: c.id } : { cuenta: c.id }); }}
+      onClose=${() => setPicker(null)} />`}
   </div>`;
 }
 
-/* ---------- Gráfica de flujo (pasado sólido + futuro punteado) ---------- */
+/* ---------- Gráfica de flujo interactiva ---------- */
 function ChartFlujo({ fl, principal }) {
-  const W = 320, H = 150, PL = 6, PR = 6, PT = 10, PB = 18;
-  const puntos = [...fl.pasado, ...fl.serie.slice(1)];
-  const vals = puntos.map(p => p.balance).concat([0]);
+  const W = 320, H = 175, PL = 6, PR = 6, PT = 14, PB = 18;
+  const wrap = useRef(null);
+  const punteros = useRef(new Map());
+  const [ventana, setVentana] = useState(null); // {ini, fin} ISO; null = todo
+  const [lectura, setLectura] = useState(null); // {fecha, balance}
+
+  useEffect(() => { setVentana(null); setLectura(null); }, [fl.desdeD, fl.hastaD]);
+
+  const tMs = iso => +new Date(iso + 'T12:00');
+  const ini = ventana ? ventana.ini : fl.desdeD;
+  const fin = ventana ? ventana.fin : fl.hastaD;
+  const tIni = tMs(ini), tFin = tMs(fin);
+  const diasVentana = Math.max(1, Math.round((tFin - tIni) / 86400000));
+  const paso = Math.max(1, Math.round(diasVentana / 120));
+
+  // series visibles: pasado real (≤ hoy) con muestreo adaptativo + futuro exacto
+  const visPas = [];
+  for (let i = 0; i < fl.seriePasado.length; i++) {
+    const p = fl.seriePasado[i];
+    if (p.fecha < ini) continue;
+    if (p.fecha > fl.hoyD) break;
+    if (i % paso === 0 || p.fecha === fl.hoyD || i === fl.seriePasado.length - 1) visPas.push(p);
+  }
+  const visFut = fl.serie.filter(p => p.fecha >= (ini > fl.hoyD ? ini : fl.hoyD) && p.fecha <= fin);
+
+  const vals = [...visPas, ...visFut].map(p => p.balance).concat([0]);
   const minV = Math.min(...vals), maxV = Math.max(...vals);
   const margen = (maxV - minV) * 0.08 || 1000;
   const lo = minV - margen, hi = maxV + margen;
-  const t0 = new Date(fl.desdeD + 'T12:00').getTime(), t1 = new Date(fl.hastaD + 'T12:00').getTime();
-  const X = f => PL + (new Date(f + 'T12:00').getTime() - t0) / (t1 - t0) * (W - PL - PR);
+  const X = iso => PL + (tMs(iso) - tIni) / (tFin - tIni || 1) * (W - PL - PR);
   const Y = v => PT + (1 - (v - lo) / (hi - lo)) * (H - PT - PB);
   const linea = pts => pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.fecha).toFixed(1)},${Y(p.balance).toFixed(1)}`).join(' ');
   const xHoy = X(fl.hoyD);
+
   const compacto = v => Math.abs(v) >= 100000 ? (v / 100000).toFixed(1) + 'k' : fmtMonto(Math.round(v / 100) * 100, 0);
 
-  // etiquetas de mes cada ~2 meses
-  const meses = [];
-  let cur = new Date(fl.desdeD + 'T12:00');
-  for (; cur <= new Date(fl.hastaD + 'T12:00'); cur.setMonth(cur.getMonth() + 1)) {
-    if (cur.getDate() === 1) meses.push({ x: X(isoDiaLocal(cur)), nom: ['e', 'f', 'm', 'a', 'm', 'j', 'j', 'a', 's', 'o', 'n', 'd'][cur.getMonth()] });
+  // ---- gestos ----
+  const clampVentana = (nIniMs, nFinMs) => {
+    const MIN_DIAS = 21;
+    const tDesde = tMs(fl.desdeD), tHasta = tMs(fl.hastaD);
+    let a = Math.max(tDesde, nIniMs), b = Math.min(tHasta, nFinMs);
+    if ((b - a) / 86400000 < MIN_DIAS) {
+      const c = (a + b) / 2;
+      a = c - MIN_DIAS * 43200000; b = c + MIN_DIAS * 43200000;
+      a = Math.max(tDesde, a); b = Math.min(tHasta, b);
+    }
+    const iso = t => { const dd = new Date(t); return `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`; };
+    return { ini: iso(a), fin: iso(b) };
+  };
+  const zoom = factor => {
+    const c = (tIni + tFin) / 2, span = (tFin - tIni) * factor;
+    setVentana(clampVentana(c - span / 2, c + span / 2));
+  };
+
+  const balanceEn = fechaISO => {
+    if (fechaISO <= fl.hoyD) {
+      let mejor = fl.seriePasado[0];
+      for (const p of fl.seriePasado) { if (p.fecha <= fechaISO) mejor = p; else break; }
+      return mejor?.balance ?? fl.balanceHoy;
+    }
+    let b = fl.balanceHoy;
+    for (const p of fl.serie) { if (p.fecha <= fechaISO) b = p.balance; else break; }
+    return b;
+  };
+  const actualizarLectura = e => {
+    const r = wrap.current.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    const fecha = new Date(tIni + frac * (tFin - tIni));
+    const iso = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+    setLectura({ fecha: iso, balance: balanceEn(iso) });
+  };
+
+  const bajar = e => {
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* puntero no capturable: el gesto igual funciona */ }
+    punteros.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    actualizarLectura(e);
+  };
+  const moverGesto = e => {
+    const prev = punteros.current.get(e.pointerId);
+    if (!prev) { actualizarLectura(e); return; }
+    const ps = punteros.current;
+    const ancho = wrap.current.getBoundingClientRect().width || 1;
+    if (ps.size === 1) {
+      const dDias = (prev.x - e.clientX) / ancho * diasVentana; // arrastrar a la derecha → ver el pasado
+      setVentana(clampVentana(tIni - dDias * 86400000, tFin - dDias * 86400000));
+    } else if (ps.size === 2) {
+      const ids = [...ps.keys()];
+      const otroId = ids.find(k => k !== e.pointerId);
+      const otro = ps.get(otroId);
+      const distPrev = Math.hypot(prev.x - otro.x, prev.y - otro.y) || 1;
+      const distNow = Math.hypot(e.clientX - otro.x, e.clientY - otro.y) || 1;
+      const razon = distNow / distPrev;
+      const rect = wrap.current.getBoundingClientRect();
+      const midFrac = Math.min(1, Math.max(0, ((e.clientX + otro.x) / 2 - rect.left) / rect.width));
+      const spanNuevo = (tFin - tIni) / Math.max(0.1, razon);
+      const anchor = tIni + midFrac * (tFin - tIni);
+      setVentana(clampVentana(anchor - midFrac * spanNuevo, anchor - midFrac * spanNuevo + spanNuevo));
+    }
+    ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    actualizarLectura(e);
+  };
+  const subir = e => {
+    punteros.current.delete(e.pointerId);
+  };
+
+  // marcas del eje X: meses si es largo, días si hay zoom
+  const marcas = [];
+  if (diasVentana > 70) {
+    const cur = new Date(ini + 'T12:00');
+    cur.setDate(1);
+    for (; tMs(isoD2(cur)) <= tFin; cur.setMonth(cur.getMonth() + 1)) {
+      const iso = isoD2(cur);
+      if (tMs(iso) >= tIni) marcas.push({ x: X(iso), nom: ['e', 'f', 'm', 'a', 'm', 'j', 'j', 'a', 's', 'o', 'n', 'd'][cur.getMonth()] });
+    }
+  } else {
+    const pasoMarca = Math.max(1, Math.round(diasVentana / 8));
+    const cur = new Date(ini + 'T12:00');
+    for (; tMs(isoD2(cur)) <= tFin; cur.setDate(cur.getDate() + pasoMarca)) {
+      marcas.push({ x: X(isoD2(cur)), nom: `${cur.getDate()}/${['e', 'f', 'm', 'a', 'm', 'j', 'j', 'a', 's', 'o', 'n', 'd'][cur.getMonth()]}` });
+    }
   }
 
-  return html`<svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: '150px' }}>
-    ${hi > 0 && html`<line x1=${PL} x2=${W - PR} y1=${Y(0)} y2=${Y(0)} stroke="var(--line)" stroke-width="1" />`}
-    <line x1=${xHoy} x2=${xHoy} y1=${PT} y2=${H - PB} stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 3" />
-    <text x=${xHoy + 3} y=${PT + 8} fontSize="8.5" fill="var(--muted)">hoy</text>
-    <path d=${linea(fl.pasado)} fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round" />
-    <path d=${linea(fl.serie)} fill="none" stroke="var(--transfer)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" />
-    ${fl.serie.slice(1).map((p, i) => html`<circle key=${i} cx=${X(p.fecha)} cy=${Y(p.balance)} r="2.6" fill="var(--transfer)">
-      <title>${p.fecha}: ${fmtConMoneda(p.balance, principal)}</title>
-    <//>`)}
-    ${fl.pasado.length > 0 && html`<circle cx=${X(fl.pasado.at(-1).fecha)} cy=${Y(fl.balanceHoy)} r="3.4" fill="var(--accent)">
-      <title>Hoy: ${fmtConMoneda(fl.balanceHoy, principal)}</title>
+  return html`<div class="flujo-chart" ref=${wrap}
+    onPointerDown=${bajar} onPointerMove=${moverGesto} onPointerUp=${subir} onPointerCancel=${subir} onPointerLeave=${subir}>
+    <svg viewBox=${`0 0 ${W} ${H}`}>
+      ${hi > 0 && html`<line x1=${PL} x2=${W - PR} y1=${Y(0)} y2=${Y(0)} stroke="var(--line)" stroke-width="1" />`}
+      ${ini <= fl.hoyD && html`<line x1=${xHoy} x2=${xHoy} y1=${PT} y2=${H - PB} stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 3" />`}
+      ${ini <= fl.hoyD && html`<text x=${xHoy + 3} y=${PT + 2} fontSize="8.5" fill="var(--muted)">hoy</text>`}
+      ${marcas.map((m, i) => html`<text key=${i} x=${m.x} y=${H - 5} fontSize="8.5" textAnchor="middle" fill="var(--muted)">${m.nom}</text>`)}
+      ${visPas.length > 1 && html`<path d=${linea(visPas)} fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round" />`}
+      ${visFut.length > 0 && html`<path d=${linea(visFut)} fill="none" stroke="var(--transfer)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" />`}
+      ${visFut.slice(1).map((p, i) => html`<circle key=${i} cx=${X(p.fecha)} cy=${Y(p.balance)} r="2.6" fill="var(--transfer)">
+        <title>${p.fecha}: ${fmtConMoneda(p.balance, principal)}</title>
+      <//>`)}
+      ${visPas.length > 0 && html`<circle cx=${X(visPas.at(-1).fecha)} cy=${Y(visPas.at(-1).balance)} r="3.4" fill="var(--accent)">
+        <title>${visPas.at(-1).fecha}: ${fmtConMoneda(visPas.at(-1).balance, principal)}</title>
+      <//>`}
+      <text x=${PL} y=${PT - 3} fontSize="8.5" fill="var(--muted)">${compacto(hi)}</text>
+    </svg>
+    <div class="flujo-zoom">
+      <button onClick=${e => { e.stopPropagation(); zoom(0.6); }} aria-label="Acercar">＋</button>
+      <button onClick=${e => { e.stopPropagation(); zoom(1 / 0.6); }} aria-label="Alejar">−</button>
+      <button onClick=${e => { e.stopPropagation(); setVentana(null); }} aria-label="Ver todo">↺</button>
+    </div>
+    ${lectura && html`<div class="flujo-lectura num">
+      ${fmtFechaCorta(lectura.fecha)} · ${fmtConMoneda(lectura.balance, principal)}
     <//>`}
-    ${meses.filter((_, i) => i % 2 === 0).map((m, i) => html`<text key=${i} x=${m.x} y=${H - 5} fontSize="8.5" textAnchor="middle" fill="var(--muted)">${m.nom}</text>`)}
-    <text x=${PL} y=${PT + 2} fontSize="8.5" fill="var(--muted)">${compacto(hi)}</text>
-    <text x=${PL} y=${H - PB - 2} fontSize="8.5" fill="var(--muted)">${compacto(lo)}</text>
-  </svg>`;
+  </div>`;
 }
-const isoDiaLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const isoD2 = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 const fmtFechaCorta = f => {
   const d = deISO(f);
   return `${d.getDate()} ${['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][d.getMonth()]}`;

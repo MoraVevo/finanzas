@@ -198,45 +198,103 @@ export function fechasRepetir(fechaBase, frecuencia, n = 6) {
 }
 
 /**
- * Serie de flujo de efectivo con los registros futuros del usuario.
- * Pasado real (muestreo semanal) + futuro = movimientos con fecha > hoy.
- * Devuelve además la lista con saldo acumulado para mostrar "cuánto tendrás".
+ * Serie DIARIA de saldos reales (en moneda principal) entre dos fechas.
+ * cuentaId null = patrimonio total (cuentas activas); si no, esa cuenta sola.
+ * Un solo recorrido de transacciones: rápida incluso con años de historial.
  */
-export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], pasadoMeses = 6, futuroMeses = 6 }) {
+export function serieSaldos({ cuentas, txs, tasas, principal, desdeD, hastaD, cuentaId = null }) {
+  const lista = cuentaId
+    ? cuentas.filter(c => c.id === cuentaId)
+    : cuentas.filter(c => !c.archivada);
+  const ordenadas = [...txs].sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  // saldo de cada cuenta al día "desdeD" (transacciones anteriores ya aplicadas)
+  let corte = 0;
+  const saldos = new Map();
+  while (corte < ordenadas.length && ordenadas[corte].fecha.slice(0, 10) <= desdeD) corte++;
+  for (const c of lista) {
+    let s = c.saldoInicial || 0;
+    for (let i = 0; i < corte; i++) s += efectoTx(ordenadas[i], c.id, tasas, c.moneda);
+    saldos.set(c.id, s);
+  }
+
+  const dias = [];
+  let i = corte;
+  const cur = new Date(desdeD + 'T12:00'), fin = new Date(hastaD + 'T12:00');
+  for (; cur <= fin; cur.setDate(cur.getDate() + 1)) {
+    const dISO = isoDia(cur);
+    while (i < ordenadas.length && ordenadas[i].fecha.slice(0, 10) <= dISO) {
+      for (const c of lista) saldos.set(c.id, saldos.get(c.id) + efectoTx(ordenadas[i], c.id, tasas, c.moneda));
+      i++;
+    }
+    let total = 0;
+    for (const c of lista) total += convertir(saldos.get(c.id), c.moneda, principal, tasas, dISO);
+    dias.push({ fecha: dISO, balance: total });
+  }
+  return dias;
+}
+
+/**
+ * Deltas futuros por fecha para un alcance: cuentaId null = patrimonio
+ * (las transferencias son neutras); si no, la cuenta elegida (la transferencia
+ * resta en el origen y suma en el destino).
+ */
+export function deltasFuturos(futuros, tasas, principal, hoyD, cuentaId = null) {
+  const evs = [];
+  for (const f of futuros) {
+    if (f.fecha <= hoyD) continue;
+    const conv = convertir(f.monto, f.moneda, principal, tasas, hoyD);
+    if (!cuentaId) {
+      if (f.tipo === 'ingreso') evs.push({ fecha: f.fecha, delta: conv, f });
+      else if (f.tipo === 'gasto') evs.push({ fecha: f.fecha, delta: -conv, f });
+      else evs.push({ fecha: f.fecha, delta: 0, f }); // transferencia: neutra para el patrimonio
+    } else {
+      if (f.tipo === 'transferencia') {
+        if (f.cuenta === cuentaId) evs.push({ fecha: f.fecha, delta: -conv, f });
+        else if (f.cuentaDestino === cuentaId) {
+          const convDest = convertir(f.montoDestino ?? f.monto, f.monedaDestino || f.moneda, principal, tasas, hoyD);
+          evs.push({ fecha: f.fecha, delta: convDest, f });
+        }
+      } else if (f.cuenta === cuentaId) {
+        evs.push({ fecha: f.fecha, delta: f.tipo === 'ingreso' ? conv : -conv, f });
+      }
+    }
+  }
+  return evs.sort((a, b) => a.fecha.localeCompare(b.fecha));
+}
+
+/**
+ * Resumen de flujo con registros futuros del usuario.
+ * scope: null (patrimonio) o id de cuenta. Devuelve la lista con saldo
+ * acumulado y métricas del horizonte elegido.
+ */
+export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], pasadoMeses = 6, futuroMeses = 6, cuentaId = null }) {
   const hoyD = isoDia();
   const clave = claveMes(hoyD);
   const desdeD = sumarMesClave(clave, -pasadoMeses) + '-01';
   const finClave = sumarMesClave(clave, futuroMeses);
   const hastaD = `${finClave.slice(0, 4)}-${finClave.slice(5, 7)}-${p2f(finDeMes(+finClave.slice(0, 4), +finClave.slice(5, 7) - 1))}`;
 
-  const ordenadas = [...txs].sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const seriePasado = serieSaldos({ cuentas, txs, tasas, principal, desdeD, hastaD, cuentaId });
+  const balanceHoy = patrimonio(cuentas, txs, tasas, principal).total;
+  const balanceHoyScope = cuentaId
+    ? (seriePasado.find(p => p.fecha === hoyD) || seriePasado.at(-1) || { balance: 0 }).balance
+    : balanceHoy;
 
-  // pasado: muestreo semanal del patrimonio real
-  const pasado = [];
-  for (let cur = new Date(desdeD + 'T12:00'); cur <= new Date(hoyD + 'T12:00'); cur.setDate(cur.getDate() + 7)) {
-    pasado.push({ fecha: isoDia(cur), balance: patrimonioEn(cuentas, ordenadas, tasas, principal, isoDia(cur)) });
-  }
-
-  // futuro: los registros del usuario con fecha posterior a hoy, en orden
-  const balanceHoy = patrimonio(cuentas, ordenadas, tasas, principal).total;
-  const siguientes = futuros
-    .filter(f => f.fecha > hoyD && f.fecha <= hastaD)
-    .sort((a, b) => a.fecha.localeCompare(b.fecha));
-  const serie = [{ fecha: hoyD, balance: balanceHoy }];
-  let acum = balanceHoy, totalIn = 0, totalOut = 0;
-  const lista = siguientes.map(f => {
-    const delta = f.tipo === 'ingreso'
-      ? convertir(f.monto, f.moneda, principal, tasas, hoyD)
-      : -convertir(f.monto, f.moneda, principal, tasas, hoyD);
-    acum += delta;
-    if (f.tipo === 'ingreso') totalIn += delta; else totalOut += -delta;
-    serie.push({ fecha: f.fecha, balance: acum });
-    return { ...f, delta, balanceDespues: acum };
+  const eventos = deltasFuturos(futuros, tasas, principal, hoyD, cuentaId)
+    .filter(e => e.fecha <= hastaD);
+  const serie = [{ fecha: hoyD, balance: balanceHoyScope }];
+  let acum = balanceHoyScope, totalIn = 0, totalOut = 0;
+  const lista = eventos.map(e => {
+    acum += e.delta;
+    if (e.delta > 0) totalIn += e.delta; else totalOut += -e.delta;
+    if (e.delta !== 0) serie.push({ fecha: e.fecha, balance: acum });
+    return { ...e.f, delta: e.delta, balanceDespues: acum };
   });
 
-  let minimo = { fecha: hoyD, balance: balanceHoy };
+  let minimo = { fecha: hoyD, balance: balanceHoyScope };
   for (const p of serie) if (p.balance < minimo.balance) minimo = p;
 
   const vencidos = futuros.filter(f => f.fecha <= hoyD).sort((a, b) => b.fecha.localeCompare(a.fecha));
-  return { desdeD, hastaD, hoyD, balanceHoy, pasado, serie, lista, minimo, totalIn, totalOut, vencidos };
+  return { desdeD, hastaD, hoyD, balanceHoy: balanceHoyScope, seriePasado, serie, lista, minimo, totalIn, totalOut, vencidos };
 }
