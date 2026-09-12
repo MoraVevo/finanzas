@@ -2,7 +2,7 @@
 // Estrategia: red-primero para HTML/JS (evita servir mezclas de versiones al
 // actualizar) con respaldo en caché si no hay red; caché-primero para lo demás.
 // Al desplegar cambios, bump de CACHE para limpiar entradas viejas.
-const CACHE = 'finanzas-v12';
+const CACHE = 'finanzas-v13';
 const NUCLEO = [
   './',
   './index.html',
@@ -28,7 +28,7 @@ self.addEventListener('activate', e => {
 });
 
 const esDinamico = url =>
-  url.pathname.endsWith('.js') || url.pathname.endsWith('.html') ||
+  url.pathname.endsWith('.js') || url.pathname.endsWith('.html') || url.pathname.endsWith('.css') ||
   url.pathname === '/' || url.pathname.endsWith('/');
 
 self.addEventListener('fetch', e => {

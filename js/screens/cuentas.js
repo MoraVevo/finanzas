@@ -42,7 +42,10 @@ export default function Cuentas() {
         <span class="emoji">${TIPOS_CUENTA[c.tipo].emoji}</span>
         <div class="cuerpo">
           <div class="titulo">${c.nombre}</div>
-          <div class="sub">${[c.banco, c.numero && '№ ' + c.numero].filter(Boolean).join(' · ') || TIPOS_CUENTA[c.tipo].nombre}</div>
+          <div class="sub">${[
+            c.banco, c.numero && '№ ' + c.numero,
+            c.tipo === 'tarjeta' && c.limite > 0 && `Disponible ${fmtConMoneda(Math.max(0, c.limite + saldoCuenta(c, txs, S.tasas)), c.moneda)}`
+          ].filter(Boolean).join(' · ') || TIPOS_CUENTA[c.tipo].nombre}</div>
         </div>
         <div style=${{ textAlign: 'right' }}>
           <div class="monto num" style=${{ color: saldoCuenta(c, txs, S.tasas) < 0 ? 'var(--gasto)' : 'inherit' }}>${fmtConMoneda(saldoCuenta(c, txs, S.tasas), c.moneda)}</div>
@@ -72,7 +75,7 @@ export default function Cuentas() {
     </div>
 
     ${detalle && html`<${Sheet} titulo=${detalle.nombre} onClose=${() => setDetalle(null)}>
-      ${DetalleCuenta({ cuenta: detalle, S, txs, principal, copiar, setEditor, setDetalle, reArchivar })}
+      ${DetalleCuenta({ cuenta: S.cuentas.find(c => c.id === detalle.id) || detalle, S, txs, principal, copiar, setEditor, setDetalle, reArchivar })}
     <//>`}
 
     ${editor && html`<${Sheet} titulo=${editor.id ? 'Editar cuenta' : 'Nueva cuenta'} onClose=${() => setEditor(null)}>
@@ -95,14 +98,19 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
     .sort((a, b) => b.fecha.localeCompare(a.fecha))
     .slice(0, 10);
   const datos = [['Banco', cuenta.banco], ['Número', cuenta.numero], ['Titular', cuenta.titular], ['Notas', cuenta.notas]];
+  const saldo = saldoCuenta(cuenta, txs, S.tasas);
+  const conLimite = cuenta.tipo === 'tarjeta' && cuenta.limite > 0;
   return html`<div>
     <div class="tarjeta" style=${{ marginBottom: '10px' }}>
       <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style=${{ fontSize: '12px', color: 'var(--muted)', fontWeight: 700 }}>${TIPOS_CUENTA[cuenta.tipo].nombre} · ${cuenta.moneda}</div>
-          <div class="num" style=${{ fontSize: '26px', fontWeight: 800, color: saldoCuenta(cuenta, txs, S.tasas) < 0 ? 'var(--gasto)' : 'inherit' }}>
-            ${fmtConMoneda(saldoCuenta(cuenta, txs, S.tasas), cuenta.moneda)}
+          <div class="num" style=${{ fontSize: '26px', fontWeight: 800, color: saldo < 0 ? 'var(--gasto)' : 'inherit' }}>
+            ${fmtConMoneda(saldo, cuenta.moneda)}
           </div>
+          ${conLimite && html`<div class="dato-cuenta num" style=${{ marginTop: '2px' }}>
+            Límite ${fmtConMoneda(cuenta.limite, cuenta.moneda)} · Disponible ${fmtConMoneda(Math.max(0, cuenta.limite + saldo), cuenta.moneda)}
+          <//>`}
         </div>
         ${cuenta.moneda !== principal && html`<div class="sub num">≈ ${fmtConMoneda(saldoConvertido(cuenta, txs, S.tasas, principal), principal)}</div>`}
       </div>
@@ -137,6 +145,7 @@ function EditorCuenta({ c, S, cerrar }) {
     nombre: c.nombre || '',
     moneda: c.moneda || S.ajustes.monedaPrincipal,
     saldo: c.saldoInicial != null ? enteroATexto(Math.abs(c.saldoInicial), 2) : '',
+    limite: c.limite != null ? enteroATexto(c.limite, 2) : '',
     banco: c.banco || '', numero: c.numero || '', titular: c.titular || '', notas: c.notas || ''
   });
   const pasivo = f.tipo === 'tarjeta' || f.tipo === 'deuda';
@@ -145,9 +154,11 @@ function EditorCuenta({ c, S, cerrar }) {
   const guardar = async () => {
     if (!f.nombre.trim()) { toast('Ponle un nombre a la cuenta'); return; }
     const saldo = textoAEntero(f.saldo || '0', 2) || 0;
+    const limite = f.tipo === 'tarjeta' ? (textoAEntero(f.limite || '0', 2) || null) : null;
     await fin.guardarCuenta({
       id: c.id || uid(), tipo: f.tipo, nombre: f.nombre.trim(), moneda: f.moneda,
       saldoInicial: pasivo ? -saldo : saldo,
+      limite,
       banco: f.banco.trim() || null, numero: f.numero.trim() || null,
       titular: f.titular.trim() || null, notas: f.notas.trim() || null,
       archivada: c.archivada || false,
@@ -186,6 +197,8 @@ function EditorCuenta({ c, S, cerrar }) {
             onInput=${e => set({ saldo: e.target.value })} />
         <//>
       <//>
+      ${f.tipo === 'tarjeta' && html`<input placeholder="Límite de crédito (opcional)" inputMode="decimal"
+        value=${f.limite} style=${{ textAlign: 'right' }} onInput=${e => set({ limite: e.target.value })} />`}
       <input placeholder="Banco (opcional)" value=${f.banco} onInput=${e => set({ banco: e.target.value })} />
       <input placeholder="Número de cuenta/tarjeta (opcional)" value=${f.numero} inputMode="numeric" onInput=${e => set({ numero: e.target.value })} />
       <input placeholder="Titular o alias (opcional)" value=${f.titular} onInput=${e => set({ titular: e.target.value })} />

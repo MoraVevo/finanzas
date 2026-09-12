@@ -309,9 +309,12 @@ function EditorFuturo({ f, S, cerrar }) {
     }
     // validez: solo la FUENTE (cuenta de origen) limita el pago. El patrimonio
     // puede estar negativo por deudas — eso se abona a futuro y no impide nada.
+    // Las tarjetas de crédito tampoco bloquean: gastar con deuda es su naturaleza.
     if (d.tipo !== 'ingreso') {
       const alcance = d.tipo === 'transferencia' ? cuentaObj?.id : d.cuenta || null;
-      if (alcance) {
+      const cuentaAlcance = S.cuentas.find(c => c.id === alcance);
+      const esCredito = cuentaAlcance && (cuentaAlcance.tipo === 'tarjeta' || cuentaAlcance.tipo === 'deuda');
+      if (alcance && !esCredito) {
         const { proy, moneda } = await disponibleProyectado(alcance, d.fecha, f.id);
         const montoAlcance = convertir(monto, d.moneda, moneda, S.tasas, isoDia());
         if (montoAlcance > proy) {
@@ -355,8 +358,8 @@ function EditorFuturo({ f, S, cerrar }) {
     <div style=${{ display: 'grid', gap: '8px' }}>
       ${d.tipo !== 'transferencia' && html`<input placeholder="Nombre (ej. Salario, Alquiler…)" value=${d.nombre}
         onInput=${e => set({ nombre: e.target.value })} />`}
-      <div style=${{ display: 'flex', gap: '8px' }}>
-        <input style=${{ flex: 1, textAlign: 'right', fontWeight: 700 }} inputMode="decimal" placeholder="0.00"
+      <div style=${{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <input style=${{ flex: '1 1 120px', minWidth: 0, textAlign: 'right', fontWeight: 700 }} inputMode="decimal" placeholder="0.00"
           value=${d.monto} onInput=${e => set({ monto: e.target.value })} />
         <div class="chips-scroll" style=${{ flexShrink: 0 }}>
           ${['GTQ', 'USD'].map(m => html`<button key=${m} class=${'chip' + (d.moneda === m ? ' sel' : '')}
@@ -372,7 +375,7 @@ function EditorFuturo({ f, S, cerrar }) {
           <button class="chip" onClick=${() => setPicker('destino')}>${destinoObj ? `${TIPOS_CUENTA[destinoObj.tipo].emoji} ${destinoObj.nombre}` : '¿Hacia dónde?'}</button>
         <//>
       <//>` : html`<div>
-        <div class="dato-cuenta">Cuenta (opcional — hace la proyección por cuenta más exacta)</div>
+        <div class="dato-cuenta">Cuenta (opcional)</div>
         <div class="chips-scroll" style=${{ marginTop: '6px' }}>
           <button class="chip" onClick=${() => setPicker('cuenta')}>
             ${cuentaObj ? `${TIPOS_CUENTA[cuentaObj.tipo].emoji} ${cuentaObj.nombre}` : 'Cualquiera'}
