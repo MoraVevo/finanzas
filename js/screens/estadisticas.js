@@ -199,7 +199,7 @@ function VistaFlujo({ S, todo }) {
     </div>
 
     <div class="tarjeta">
-      <h3>${nombreScope ? `${nombreScope} en el tiempo` : 'Tu patrimonio en el tiempo'}</h3>
+      <h3 style=${{ fontSize: '11px' }}>${nombreScope ? `${nombreScope} en el tiempo` : 'Tu patrimonio en el tiempo'}</h3>
       <${ChartFlujo} fl=${fl} principal=${principal} />
       <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
         <span>▬ Real</span><span>┄ Registrado por ti</span>
@@ -413,7 +413,7 @@ function EditorFuturo({ f, S, cerrar }) {
    Ventana por defecto: 1 mes alrededor de hoy. Eje X legible: días ("10 sep")
    con zoom, meses ("sep", "sep 26" en ventanas largas). */
 function ChartFlujo({ fl, principal }) {
-  const W = 320, H = 250, PL = 8, PR = 8, PT = 18, PB = 22;
+  const W = 320, H = 250, PL = 8, PR = 8, PT = 14, PB = 16;
   const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   const wrap = useRef(null);
   const punteros = useRef(new Map());
@@ -552,12 +552,12 @@ function ChartFlujo({ fl, principal }) {
     <svg viewBox=${`0 0 ${W} ${H}`}>
       ${ticksY.map((v, i) => html`<g key=${'y' + i}>
         <line x1=${PL} x2=${W - PR} y1=${Y(v)} y2=${Y(v)} stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4" opacity=".7" />
-        <text x=${PL + 2} y=${Y(v) - 3} fontSize="7" fill="var(--muted)">${compacto(v)}</text>
+        <text x=${PL + 2} y=${Y(v) - 2} style=${{ fontSize: '6px' }} fill="var(--muted)">${compacto(v)}</text>
       </g>`)}
       ${hi > 0 && html`<line x1=${PL} x2=${W - PR} y1=${Y(0)} y2=${Y(0)} stroke="var(--line)" stroke-width="1" />`}
       ${ini <= fl.hoyD && fin >= fl.hoyD && html`<line x1=${xHoy} x2=${xHoy} y1=${PT} y2=${H - PB} stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 3" />`}
-      ${ini <= fl.hoyD && fin >= fl.hoyD && html`<text x=${xHoy + 3} y=${PT - 6} fontSize="7" fill="var(--muted)">hoy</text>`}
-      ${marcas.map((m, i) => html`<text key=${i} x=${m.x} y=${H - 6} fontSize="9" textAnchor="middle" fill="var(--muted)">${m.nom}</text>`)}
+      ${ini <= fl.hoyD && fin >= fl.hoyD && html`<text x=${xHoy + 3} y=${PT - 4} style=${{ fontSize: '6px' }} fill="var(--muted)">hoy</text>`}
+      ${marcas.map((m, i) => html`<text key=${i} x=${m.x} y=${H - 5} style=${{ fontSize: '6px' }} textAnchor="middle" fill="var(--muted)">${m.nom}</text>`)}
       ${visPas.length > 1 && html`<path d=${linea(visPas)} fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round" />`}
       ${visFut.length > 0 && html`<path d=${linea(visFut)} fill="none" stroke="var(--transfer)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" />`}
       ${visFut.slice(1).map((p, i) => html`<circle key=${i} cx=${X(p.fecha)} cy=${Y(p.balance)} r="2.8" fill="var(--transfer)">
@@ -602,8 +602,8 @@ function ChartDias({ porDia, diasMes, max, principal }) {
         <title>Día ${i + 1}: ${fmtConMoneda(v, principal)}</title>
       </rect>`;
     })}
-    <text x="0" y=${H - 1} fontSize="7" fill="var(--muted)">1</text>
-    <text x=${W - 14} y=${H - 1} fontSize="7" fill="var(--muted)">${diasMes}</text>
+    <text x="0" y=${H - 1} style=${{ fontSize: '7px' }} fill="var(--muted)">1</text>
+    <text x=${W - 14} y=${H - 1} style=${{ fontSize: '7px' }} fill="var(--muted)">${diasMes}</text>
   </svg>`;
 }
 
@@ -623,7 +623,7 @@ function Tendencia({ datos, max }) {
           <title>${fmtMesLargo(m.clave)} · ingreso ${fmtMonto(m.ingreso, 2)}</title>
         </rect>
         ${mes === 1 || mes === 6 || mes === 12 || i === 0 || i === n - 1
-          ? html`<text x=${cx + bw / 2} y=${H - 2} fontSize="8" textAnchor="middle" fill="var(--muted)">${['', 'e', 'f', 'm', 'a', 'm', 'j', 'j', 'a', 's', 'o', 'n', 'd'][mes]}</text>`
+          ? html`<text x=${cx + bw / 2} y=${H - 2} style=${{ fontSize: '7px' }} textAnchor="middle" fill="var(--muted)">${['', 'e', 'f', 'm', 'a', 'm', 'j', 'j', 'a', 's', 'o', 'n', 'd'][mes]}</text>`
           : null}
       </g>`;
     })}
