@@ -514,6 +514,50 @@ function ChartPie({ S, fl, principal }) {
   </div>`;
 }
 
+/* ---------- Barras: ingreso vs gasto proyectado, mes a mes ---------- */
+function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
+  const porMes = new Map();
+  for (const f of fl.lista) {
+    const clave = f.fecha.slice(0, 7);
+    const e = porMes.get(clave) || { in: 0, out: 0 };
+    const montoP = convertir(f.monto, f.moneda, principal, S.tasas, f.fecha);
+    if (f.tipo === 'ingreso') e.in += montoP;
+    else if (f.tipo === 'gasto') e.out += montoP;
+    else { e.in += montoP; e.out += (f.montoDestino ? convertir(f.montoDestino, f.monedaDestino || f.moneda, principal, S.tasas, f.fecha) : montoP); }
+    porMes.set(clave, e);
+  }
+  const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const meses = [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const max = Math.max(1, ...meses.flatMap(([, e]) => [e.in, e.out]));
+  const W = 320, H = 170, PB = 26, PT = 8;
+  const bw = W / Math.max(1, meses.length);
+
+  return html`<div>
+    <h3 style=${{ fontSize: '11px' }}>Ingreso vs gasto proyectado · por mes</h3>
+    <svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: '170px' }}>
+      ${meses.map(([clave, e], i) => {
+        const hi = (H - PB - PT) * e.in / max;
+        const ho = (H - PB - PT) * e.out / max;
+        const nomMes = MESES3[+clave.slice(5, 7) - 1] + (clave.slice(2, 4));
+        return html`<g key=${clave}>
+          <rect x=${i * bw + 3} y=${H - PB - hi} width=${bw / 2 - 4} height=${Math.max(2, hi)} rx="3" fill="var(--ingreso)" opacity=".9">
+            <title>Ingresos ${nomMes}: ${fmtConMoneda(e.in, principal)}</title>
+          </rect>
+          <rect x=${i * bw + bw / 2 + 1} y=${H - PB - ho} width=${bw / 2 - 4} height=${Math.max(2, ho)} rx="3" fill="var(--gasto)" opacity=".9">
+            <title>Gastos ${nomMes}: ${fmtConMoneda(e.out, principal)}</title>
+          </rect>
+          <text x=${i * bw + bw / 2} y=${H - 14} textAnchor="middle" style=${{ fontSize: '7px' }} fill="var(--muted)">${nomMes}</text>
+          ${i % 2 === 0 && html`<text x=${i * bw + bw / 2} y=${H - 4} textAnchor="middle" style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtMonto(Math.round(Math.max(e.in, e.out) / 1000) * 1000, 0)}</text>`}
+        </g>`;
+      })}
+    </svg>
+    <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+      <span>🟩 Ingresos</span><span>🟥 Gastos</span>
+    </div>
+    ${meses.length === 0 && html`<div class="vacio">Sin movimientos futuros aún en el horizonte de ${horizonte} mes(es).</div>`}
+  </div>`;
+}
+
 /* ---------- Gráfica de flujo interactiva ----------
    Un dedo = desplazarse SIEMPRE; pellizco (dos dedos) o botones = zoom.
    Ventana por defecto: 1 mes alrededor de hoy. Eje X legible: días ("10 sep")
