@@ -102,17 +102,19 @@ export function FilaTx({ tx, cuentas, categorias, onClick }) {
   const cta = cuentas.find(c => c.id === tx.cuenta);
   const cat = categorias.find(c => c.id === tx.categoria);
   const destino = tx.cuentaDestino ? cuentas.find(c => c.id === tx.cuentaDestino) : null;
+  const esPagoDeuda = tx.tipo === 'transferencia' && destino && (destino.tipo === 'tarjeta' || destino.tipo === 'deuda');
   const clase = tx.tipo === 'gasto' ? 'm-gasto' : tx.tipo === 'ingreso' ? 'm-ingreso' : 'm-transf';
   const signo = tx.tipo === 'gasto' ? '−' : tx.tipo === 'ingreso' ? '+' : '→ ';
   const titulo = tx.tipo === 'transferencia'
-    ? `${cta?.nombre || '?'} → ${destino?.nombre || '?'}`
+    ? (esPagoDeuda ? `Pago de deuda · ${destino?.nombre || '?'}` : `${cta?.nombre || '?'} → ${destino?.nombre || '?'}`)
     : (tx.motivo || `${cat?.emoji || ''} ${cat?.nombre || (tx.tipo === 'ingreso' ? 'Ingreso' : 'Gasto')}`.trim());
   const sub = [
-    tx.motivo && cat && tx.tipo !== 'transferencia' ? `${cat.emoji} ${cat.nombre}` : (tx.tipo === 'transferencia' ? '🔁 Transferencia' : null),
+    tx.motivo && cat && tx.tipo !== 'transferencia' ? `${cat.emoji} ${cat.nombre}`
+      : tx.tipo === 'transferencia' ? (esPagoDeuda ? '💳 Pago de deuda' : '🔁 Transferencia') : null,
     cta && tx.tipo !== 'transferencia' ? cta.nombre : null,
     (tx.etiquetas || []).map(e => '#' + e).join(' ') || null].filter(Boolean).join(' · ');
   return html`<div class="fila" onClick=${onClick}>
-    <span class="emoji">${tx.tipo === 'transferencia' ? '🔁' : (cat?.emoji || (tx.tipo === 'ingreso' ? '💰' : '📦'))}</span>
+    <span class="emoji">${tx.tipo === 'transferencia' ? (esPagoDeuda ? '💳' : '🔁') : (cat?.emoji || (tx.tipo === 'ingreso' ? '💰' : '📦'))}</span>
     <div class="cuerpo">
       <div class="titulo">${titulo}</div>
       <div class="sub">${sub}</div>
