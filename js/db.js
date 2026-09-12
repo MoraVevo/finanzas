@@ -26,6 +26,9 @@ db.version(2).stores({}).upgrade(async tx => {
 // v3: movimientos futuros registrados por el usuario (flujo de efectivo).
 db.version(3).stores({ futuros: 'id, fecha, tipo' });
 
+// v4: ingresos y gastos fijos (reglas periódicas indefinidas).
+db.version(4).stores({ fijos: 'id, tipo, activa' });
+
 const fin = {};
 
 /* ---------- ajustes (key/value) ---------- */
@@ -124,6 +127,11 @@ fin.inicial = async () => {
 fin.futuros = () => db.futuros.toArray();
 fin.guardarFuturo = f => db.futuros.put(f);
 fin.borrarFuturo = id => db.futuros.delete(id);
+
+/* ---------- fijos (reglas periódicas: salario, alquiler…) ---------- */
+fin.fijos = () => db.fijos.toArray();
+fin.guardarFijo = f => db.fijos.put(f);
+fin.borrarFijo = id => db.fijos.delete(id);
 
 fin._db = () => db;
 

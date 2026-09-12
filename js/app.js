@@ -75,7 +75,7 @@ function App() {
   }
 
   const tabs = [
-    ['#/', '🏠', 'Hoy'],
+    ['#/', '🏠', 'Inicio'],
     ['#/movimientos', '🧾', 'Movs'],
     [null, '＋', ''],
     ['#/estadisticas', '📊', 'Stats'],

@@ -302,3 +302,68 @@ export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], pa
   const vencidos = futuros.filter(f => f.fecha <= hoyD).sort((a, b) => b.fecha.localeCompare(a.fecha));
   return { desdeD, hastaD, hoyD, balanceHoy: balanceHoyScope, seriePasado, serie, lista, minimo, totalIn, totalOut, vencidos };
 }
+
+/* ============ Fijos: poder adquisitivo teórico ============ */
+
+const p2g = n => String(n).padStart(2, '0');
+const diasDelMes = (y, m) => new Date(y, m + 1, 0).getDate(); // m: 0-11
+
+/** Fechas de ocurrencia de una regla fija dentro de [desdeD, hastaD], solo futuras.
+ *  frecuencia: 'mensual' (día) | 'quincenal' (15 y fin de mes) | 'semanal' (día = weekday 0-6). */
+export function fechasFijo(regla, desdeD, hastaD) {
+  const out = [];
+  const hoy = isoDia();
+  if (regla.frecuencia === 'semanal') {
+    let cur = new Date(desdeD + 'T12:00');
+    for (let i = 0; i < 7 && cur.getDay() !== (regla.dia ?? 1); i++) cur.setDate(cur.getDate() + 1);
+    const fin = new Date(hastaD + 'T12:00');
+    for (; cur <= fin; cur.setDate(cur.getDate() + 7)) {
+      const iso = isoDia(cur);
+      if (iso >= hoy) out.push(iso);
+    }
+    return out;
+  }
+  let y = +desdeD.slice(0, 4), m = +desdeD.slice(5, 7) - 1;
+  const fy = +hastaD.slice(0, 4), fm = +hastaD.slice(5, 7) - 1;
+  for (; y < fy || (y === fy && m <= fm); m++, m > 11 ? (m = 0, y++) : 0) {
+    const dias = regla.frecuencia === 'quincenal' ? [15, diasDelMes(y, m)] : [Math.min(regla.dia || 1, diasDelMes(y, m))];
+    for (const d of dias) {
+      const iso = `${y}-${p2g(m + 1)}-${p2g(d)}`;
+      if (iso >= desdeD && iso <= hastaD && iso >= hoy) out.push(iso);
+    }
+  }
+  return out;
+}
+
+/**
+ * Poder adquisitivo teórico: parte del dinero líquido de hoy (sin contar
+ * tarjetas ni deudas — una deuda no impide pagar) y camina el calendario
+ * aplicando cada fijo en orden. Cada gasto queda marcado: alcanza o faltante.
+ */
+export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], dias = 45 }) {
+  const hoyD = isoDia();
+  const finD = (() => { const d = new Date(hoyD + 'T12:00'); d.setDate(d.getDate() + dias); return isoDia(d); })();
+  let base = 0;
+  for (const c of cuentas.filter(c => !c.archivada && c.tipo !== 'tarjeta' && c.tipo !== 'deuda')) {
+    base += convertir(saldoCuenta(c, txs, tasas), c.moneda, principal, tasas, hoyD);
+  }
+  const eventos = [];
+  for (const r of fijos.filter(r => r.activa !== false)) {
+    const montoP = convertir(r.monto, r.moneda, principal, tasas, hoyD);
+    for (const fecha of fechasFijo(r, hoyD, finD)) {
+      eventos.push({
+        fecha, tipo: r.tipo, fijoId: r.id,
+        nombre: r.nombre || (r.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo'),
+        montoP, moneda: principal
+      });
+    }
+  }
+  // mismo día: los ingresos se aplican antes que los gastos
+  eventos.sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.tipo === 'ingreso' ? -1 : 1));
+  let saldo = base;
+  const rows = eventos.map(e => {
+    saldo += e.tipo === 'ingreso' ? e.montoP : -e.montoP;
+    return { ...e, balanceDespues: saldo, ok: saldo >= 0, faltante: saldo < 0 ? -saldo : 0 };
+  });
+  return { base, rows, hastaD: finD };
+}
