@@ -134,7 +134,7 @@ function VistaMes({ S, todo }) {
 /* ================= Vista: Flujo y futuro ================= */
 function VistaFlujo({ S, todo }) {
   const principal = S.ajustes.monedaPrincipal;
-  const [horizonte, setHorizonte] = useState(6);
+  const [horizonte, setHorizonte] = useState(1);
   const [cuentaScope, setCuentaScope] = useState(null); // null = patrimonio
   const [editor, setEditor] = useState(null);
 
@@ -145,6 +145,7 @@ function VistaFlujo({ S, todo }) {
 
   const final = fl.serie.at(-1);
   const nombreScope = cuentaScope ? (S.cuentas.find(c => c.id === cuentaScope)?.nombre || '') : null;
+  const HORIZONTES = [[1, '1 mes'], [3, '3 meses'], [6, '6 meses']];
 
   /** Convierte un registro vencido en transacción real (con su fecha original)
    *  y lo elimina de la lista de futuros: el pasado solo vive en Movimientos. */
@@ -180,9 +181,9 @@ function VistaFlujo({ S, todo }) {
         ${nombreScope ? `Hoy en ${nombreScope}` : 'Hoy tienes'}
       </div>
       <div class="num" style=${{ fontSize: '30px', fontWeight: 800 }}>${fmtConMoneda(fl.balanceHoy, principal)}</div>
-      <div style=${{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '10px' }}>
-        ${[3, 6, 12].map(m => html`<button key=${m} class=${'chip' + (m === horizonte ? ' sel' : '')}
-          onClick=${() => setHorizonte(m)}>${m} meses</button>`)}
+      <div class="segmentado" style=${{ marginTop: '12px' }}>
+        ${HORIZONTES.map(([m, t]) => html`<button key=${m} class=${horizonte === m ? 'sel' : ''}
+          onClick=${() => setHorizonte(m)}>Proyectar ${t}</button>`)}
       </div>
     </div>
 
@@ -537,9 +538,16 @@ function ChartFlujo({ fl, principal }) {
     }
   }
 
+  // eje Y: líneas de referencia con valores legibles
+  const ticksY = [1, 2, 3].map(i => lo + (hi - lo) * (i / 4));
+
   return html`<div class="flujo-chart" ref=${wrap}
     onPointerDown=${bajar} onPointerMove=${moverGesto} onPointerUp=${subir} onPointerCancel=${subir} onPointerLeave=${subir}>
     <svg viewBox=${`0 0 ${W} ${H}`}>
+      ${ticksY.map((v, i) => html`<g key=${'y' + i}>
+        <line x1=${PL} x2=${W - PR} y1=${Y(v)} y2=${Y(v)} stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4" opacity=".7" />
+        <text x=${PL + 2} y=${Y(v) - 3} fontSize="8.5" fill="var(--muted)">${compacto(v)}</text>
+      </g>`)}
       ${hi > 0 && html`<line x1=${PL} x2=${W - PR} y1=${Y(0)} y2=${Y(0)} stroke="var(--line)" stroke-width="1" />`}
       ${ini <= fl.hoyD && fin >= fl.hoyD && html`<line x1=${xHoy} x2=${xHoy} y1=${PT} y2=${H - PB} stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 3" />`}
       ${ini <= fl.hoyD && fin >= fl.hoyD && html`<text x=${xHoy + 3} y=${PT - 6} fontSize="9" fill="var(--muted)">hoy</text>`}
@@ -552,7 +560,9 @@ function ChartFlujo({ fl, principal }) {
       ${visPas.length > 0 && html`<circle cx=${X(visPas.at(-1).fecha)} cy=${Y(visPas.at(-1).balance)} r="3.6" fill="var(--accent)">
         <title>${visPas.at(-1).fecha}: ${fmtConMoneda(visPas.at(-1).balance, principal)}</title>
       <//>`}
-      <text x=${PL} y=${PT - 6} fontSize="9" fill="var(--muted)">${compacto(hi)}</text>
+      ${lectura && html`<line x1=${X(lectura.fecha)} x2=${X(lectura.fecha)} y1=${PT} y2=${H - PB}
+        stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3" opacity=".8" />`}
+      ${lectura && html`<circle cx=${X(lectura.fecha)} cy=${Y(lectura.balance)} r="4.2" fill="var(--accent)" stroke="var(--card)" stroke-width="1.5" />`}
     </svg>
     <div class="flujo-zoom">
       <button onClick=${e => { e.stopPropagation(); zoom(0.6); }} aria-label="Acercar">＋</button>
@@ -560,7 +570,7 @@ function ChartFlujo({ fl, principal }) {
       <button onClick=${e => { e.stopPropagation(); setVentana(null); }} aria-label="Mes actual">↺</button>
     </div>
     ${lectura && html`<div class="flujo-lectura num">
-      ${fmtFechaCorta(lectura.fecha)} · ${fmtConMoneda(lectura.balance, principal)}
+      <span style=${{ opacity: .7 }}>Neto ${fmtFechaCorta(lectura.fecha)}</span> · ${fmtConMoneda(lectura.balance, principal)}
     <//>`}
   </div>`;
 }
