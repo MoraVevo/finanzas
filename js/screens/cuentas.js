@@ -99,13 +99,14 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
     .filter(t => t.cuenta === cuenta.id || t.cuentaDestino === cuenta.id)
     .sort((a, b) => b.fecha.localeCompare(a.fecha))
     .slice(0, 10);
+  // filter(Boolean): sin corte/pago/bolsa quedan nulls y destructurarlas crashea el render
   const datos = [
     ['Banco', cuenta.banco], ['Número', cuenta.numero], ['Titular', cuenta.titular],
-    cuenta.corte && ['Fecha de corte', 'día ' + cuenta.corte + ' de cada mes'],
-    cuenta.pagoDia && ['Pago límite', 'día ' + cuenta.pagoDia + ' de cada mes'],
-    cuenta.bolsa && ['Tipo de crédito', cuenta.bolsa === 'compartida' ? 'Bolsa compartida (crédito del banco)' : 'Individual'],
+    cuenta.corte ? ['Fecha de corte', 'día ' + cuenta.corte + ' de cada mes'] : null,
+    cuenta.pagoDia ? ['Pago límite', 'día ' + cuenta.pagoDia + ' de cada mes'] : null,
+    cuenta.bolsa ? ['Tipo de crédito', cuenta.bolsa === 'compartida' ? 'Bolsa compartida (crédito del banco)' : 'Individual'] : null,
     ['Notas', cuenta.notas]
-  ];
+  ].filter(Boolean);
   const saldo = saldoCuenta(cuenta, txs, S.tasas);
   const conLimite = cuenta.tipo === 'tarjeta' && cuenta.limite > 0;
   return html`<div>
