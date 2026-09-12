@@ -7,7 +7,7 @@ let state = {
   route: location.hash || '#/',
   routeAnterior: '#/',
   toast: null,
-  cuentas: [], categorias: [], etiquetas: [], presupuestos: [], tasas: [],
+  cuentas: [], categorias: [], etiquetas: [], presupuestos: [], tasas: [], futuros: [],
   ajustes: { monedaPrincipal: 'GTQ', iniciado: false },
 };
 const subs = new Set();
@@ -36,11 +36,11 @@ window.addEventListener('hashchange', () => setState({ route: location.hash || '
 
 /** Recarga los catálogos desde IndexedDB al store en memoria. */
 export async function recargar() {
-  const [cuentas, categorias, etiquetas, presupuestos, tasas, ajustes] = await Promise.all([
-    fin.cuentas(), fin.categorias(), fin.etiquetas(), fin.presupuestos(), fin.tasas(),
+  const [cuentas, categorias, etiquetas, presupuestos, tasas, futuros, ajustes] = await Promise.all([
+    fin.cuentas(), fin.categorias(), fin.etiquetas(), fin.presupuestos(), fin.tasas(), fin.futuros(),
     fin.getAjuste('app', { monedaPrincipal: 'GTQ', iniciado: false }),
   ]);
-  setState({ cuentas, categorias, etiquetas, presupuestos, tasas, ajustes, listo: true });
+  setState({ cuentas, categorias, etiquetas, presupuestos, tasas, futuros, ajustes, listo: true });
 }
 
 let timerToast = null;

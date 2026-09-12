@@ -23,6 +23,9 @@ db.version(2).stores({}).upgrade(async tx => {
   }
 });
 
+// v3: movimientos futuros registrados por el usuario (flujo de efectivo).
+db.version(3).stores({ futuros: 'id, fecha, tipo' });
+
 const fin = {};
 
 /* ---------- ajustes (key/value) ---------- */
@@ -116,6 +119,11 @@ fin.inicial = async () => {
   }
   if (!(await fin.getAjuste('monedaPrincipal'))) await fin.setAjuste('monedaPrincipal', 'GTQ');
 };
+
+/* ---------- movimientos futuros (flujo de efectivo) ---------- */
+fin.futuros = () => db.futuros.toArray();
+fin.guardarFuturo = f => db.futuros.put(f);
+fin.borrarFuturo = id => db.futuros.delete(id);
 
 fin._db = () => db;
 

@@ -2,7 +2,7 @@
 // monedas y estadísticas. Sin dependencias de la UI: reutilizable en cualquier
 // contexto (futuro sync, app nativa, scripts de análisis, etc.).
 
-import { monedaInfo, claveMes, sumarMesClave } from './util.js';
+import { monedaInfo, claveMes, sumarMesClave, isoDia } from './util.js';
 
 export const TIPOS_CUENTA = {
   efectivo: { emoji: '💵', nombre: 'Efectivo' },
@@ -143,4 +143,100 @@ export function motivosRecientes(txs, limite = 30) {
     if (tx.motivo && !vistos.has(tx.motivo)) { vistos.add(tx.motivo); if (vistos.size >= limite) break; }
   }
   return [...vistos];
+}
+
+
+/* ============ Flujo de efectivo: registros futuros del usuario ============ */
+
+const p2f = n => String(n).padStart(2, '0');
+const finDeMes = (y, m) => new Date(y, m + 1, 0).getDate(); // m: 0-11
+
+/**
+ * Patrimonio (en moneda principal) que se tenía en una fecha, aplicando solo
+ * las transacciones reales anteriores o iguales a esa fecha.
+ */
+export function patrimonioEn(cuentas, txs, tasas, principal, fechaISO) {
+  let total = 0;
+  for (const c of cuentas.filter(c => !c.archivada)) {
+    let s = c.saldoInicial || 0;
+    for (const tx of txs) {
+      if (tx.fecha.slice(0, 10) > fechaISO) break;
+      s += efectoTx(tx, c.id, tasas, c.moneda);
+    }
+    total += convertir(s, c.moneda, principal, tasas, fechaISO);
+  }
+  return total;
+}
+
+/**
+ * Fechas que se generan al repetir un movimiento futuro.
+ * frecuencia: 'unica' | 'mensual' | 'quincenal'; n = cuántas fechas en total.
+ */
+export function fechasRepetir(fechaBase, frecuencia, n = 6) {
+  if (frecuencia === 'unica' || n <= 1) return [fechaBase];
+  const base = new Date(fechaBase + 'T12:00');
+  const { y, m, d } = { y: base.getFullYear(), m: base.getMonth(), d: base.getDate() };
+  const fuera = [];
+  if (frecuencia === 'quincenal') {
+    // alterna: si el día base es > 15, parte del fin de mes y salta al 15 siguiente
+    let primeraQuincena = d <= 15;
+    let cur = new Date(y, m, primeraQuincena ? 15 : finDeMes(y, m), 12);
+    for (let i = 0; i < n; i++) {
+      fuera.push(`${cur.getFullYear()}-${p2f(cur.getMonth() + 1)}-${p2f(cur.getDate())}`);
+      if (primeraQuincena) cur = new Date(cur.getFullYear(), cur.getMonth(), finDeMes(cur.getFullYear(), cur.getMonth()), 12);
+      else cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 15, 12);
+      primeraQuincena = !primeraQuincena;
+    }
+    return fuera;
+  }
+  for (let i = 0; i < n; i++) {
+    const cur = new Date(y, m + i, 1);
+    const dia = Math.min(d, finDeMes(cur.getFullYear(), cur.getMonth()));
+    fuera.push(`${cur.getFullYear()}-${p2f(cur.getMonth() + 1)}-${p2f(dia)}`);
+  }
+  return fuera;
+}
+
+/**
+ * Serie de flujo de efectivo con los registros futuros del usuario.
+ * Pasado real (muestreo semanal) + futuro = movimientos con fecha > hoy.
+ * Devuelve además la lista con saldo acumulado para mostrar "cuánto tendrás".
+ */
+export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], pasadoMeses = 6, futuroMeses = 6 }) {
+  const hoyD = isoDia();
+  const clave = claveMes(hoyD);
+  const desdeD = sumarMesClave(clave, -pasadoMeses) + '-01';
+  const finClave = sumarMesClave(clave, futuroMeses);
+  const hastaD = `${finClave.slice(0, 4)}-${finClave.slice(5, 7)}-${p2f(finDeMes(+finClave.slice(0, 4), +finClave.slice(5, 7) - 1))}`;
+
+  const ordenadas = [...txs].sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  // pasado: muestreo semanal del patrimonio real
+  const pasado = [];
+  for (let cur = new Date(desdeD + 'T12:00'); cur <= new Date(hoyD + 'T12:00'); cur.setDate(cur.getDate() + 7)) {
+    pasado.push({ fecha: isoDia(cur), balance: patrimonioEn(cuentas, ordenadas, tasas, principal, isoDia(cur)) });
+  }
+
+  // futuro: los registros del usuario con fecha posterior a hoy, en orden
+  const balanceHoy = patrimonio(cuentas, ordenadas, tasas, principal).total;
+  const siguientes = futuros
+    .filter(f => f.fecha > hoyD && f.fecha <= hastaD)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const serie = [{ fecha: hoyD, balance: balanceHoy }];
+  let acum = balanceHoy, totalIn = 0, totalOut = 0;
+  const lista = siguientes.map(f => {
+    const delta = f.tipo === 'ingreso'
+      ? convertir(f.monto, f.moneda, principal, tasas, hoyD)
+      : -convertir(f.monto, f.moneda, principal, tasas, hoyD);
+    acum += delta;
+    if (f.tipo === 'ingreso') totalIn += delta; else totalOut += -delta;
+    serie.push({ fecha: f.fecha, balance: acum });
+    return { ...f, delta, balanceDespues: acum };
+  });
+
+  let minimo = { fecha: hoyD, balance: balanceHoy };
+  for (const p of serie) if (p.balance < minimo.balance) minimo = p;
+
+  const vencidos = futuros.filter(f => f.fecha <= hoyD).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  return { desdeD, hastaD, hoyD, balanceHoy, pasado, serie, lista, minimo, totalIn, totalOut, vencidos };
 }
