@@ -7,7 +7,7 @@ import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
 import { statsMes, tendencia, patrimonio, saldoConvertido, flujoEfectivo, fechasRepetir, convertir, TIPOS_CUENTA } from '../model.js';
 import { Sheet, PickerCuentas } from '../ui.js';
-import { fmtConMoneda, fmtMonto, textoAEntero, enteroATexto, uid, isoDia, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
+import { fmtConMoneda, fmtMonto, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
 export default function Estadisticas() {
   const S = useStore();
@@ -146,6 +146,26 @@ function VistaFlujo({ S, todo }) {
   const final = fl.serie.at(-1);
   const nombreScope = cuentaScope ? (S.cuentas.find(c => c.id === cuentaScope)?.nombre || '') : null;
 
+  /** Convierte un registro vencido en transacción real (con su fecha original)
+   *  y lo elimina de la lista de futuros: el pasado solo vive en Movimientos. */
+  const registrarOcurrido = async f => {
+    if (!confirm('¿Registrar "' + (f.nombre || (f.tipo === 'transferencia' ? 'la transferencia' : f.tipo)) +
+      '" como movimiento real del ' + fmtFechaCorta(f.fecha) + '?')) return;
+    await fin.guardarTx({
+      id: uid(), tipo: f.tipo, monto: f.monto, moneda: f.moneda,
+      cuenta: f.cuenta || S.cuentas.filter(c => !c.archivada)[0]?.id || null,
+      cuentaDestino: f.cuentaDestino || null,
+      montoDestino: f.montoDestino ?? null,
+      categoria: null, etiquetas: [], motivo: f.nombre || null,
+      fecha: f.fecha + 'T' + isoLocal().slice(11, 16),
+      adjuntos: [], eliminada: false,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    });
+    await fin.borrarFuturo(f.id);
+    await recargar();
+    toast('✓ Registrado en tus movimientos');
+  };
+
   return html`<div>
     <div class="chips-scroll" style=${{ marginBottom: '10px' }}>
       <button class=${'chip' + (!cuentaScope ? ' sel' : '')} onClick=${() => setCuentaScope(null)}>🌏 Patrimonio</button>
@@ -206,15 +226,31 @@ function VistaFlujo({ S, todo }) {
         Registra lo que sabes que viene: "15 — salario +Q8,000", "20 — pago tarjeta", "12 — +Q400"…<br/>
         La línea punteada te mostrará cuánto tendrás en cada fecha.
       <//>`}
-      ${fl.vencidos.length > 0 && html`<div class="dato-cuenta" style=${{ marginTop: '8px' }}>
-        ${fl.vencidos.length} registro(s) con fecha pasada. Si ya ocurrieron, regístralos con ＋ y bórralos de aquí.
+
+      ${fl.vencidos.length > 0 && html`<div style=${{ marginTop: '10px' }}>
+        <h3>Ya pasó su fecha</h3>
+        ${fl.vencidos.map(f => html`<div key=${f.id} class="fila fila-vencida" onClick=${() => setEditor(f)}>
+          <span class="emoji">${f.tipo === 'ingreso' ? '💰' : f.tipo === 'gasto' ? '🔻' : '🔁'}</span>
+          <div class="cuerpo">
+            <div class="titulo">${f.tipo === 'transferencia'
+              ? `${S.cuentas.find(c => c.id === f.cuenta)?.nombre || '?'} → ${S.cuentas.find(c => c.id === f.cuentaDestino)?.nombre || '?'}`
+              : (f.nombre || (f.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'))}</div>
+            <div class="sub">${fmtFechaCorta(f.fecha)} · toca para reprogramarlo</div>
+          </div>
+          <button class="chip" style=${{ background: 'var(--accent)', color: 'var(--on-accent)' }}
+            onClick=${e => { e.stopPropagation(); registrarOcurrido(f); }}>✓ Ya ocurrió</button>
+        <//>`)}
+        <div class="dato-cuenta" style=${{ marginTop: '6px' }}>
+          "Ya ocurrió" lo convierte en movimiento real con su fecha original (y lo quita de aquí). Tu pasado vive solo en Movimientos.
+        <//>
       <//>`}
+
       <div class="dato-cuenta" style=${{ marginTop: '8px' }}>
         Esto no es una predicción: son <b>tus registros</b>. La línea sólida es tu historia real; la punteada, lo que anotaste que viene.
       </div>
     </div>
 
-    ${editor && html`<${Sheet} titulo=${editor.id ? 'Editar movimiento futuro' : 'Nuevo movimiento futuro'} onClose=${() => setEditor(null)}>
+    ${editor && html`<${Sheet} titulo=${editor.id ? 'Reprogramar movimiento futuro' : 'Nuevo movimiento futuro'} onClose=${() => setEditor(null)}>
       <${EditorFuturo} f=${editor} S=${S} cerrar=${() => setEditor(null)} />
     <//>`}
   </div>`;
@@ -237,7 +273,7 @@ function EditorFuturo({ f, S, cerrar }) {
     const monto = textoAEntero(d.monto || '0', 2);
     if (!monto) { toast('Escribe el monto'); return; }
     if (!d.fecha) { toast('Elige la fecha'); return; }
-    if (d.fecha <= isoDia() && !f.id) { toast('La fecha debe ser futura'); return; }
+    if (d.fecha <= isoDia()) { toast('La fecha debe ser futura: lo que ya pasó se registra con ＋ o con "Ya ocurrió"'); return; }
     if (d.tipo === 'transferencia') {
       if (!cuentaObj || !destinoObj || cuentaObj.id === destinoObj.id) { toast('Elige las dos cuentas (distintas)'); return; }
     }
