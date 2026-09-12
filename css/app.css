@@ -40,7 +40,7 @@
 /* ============ Base ============ */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; padding: 0; }
-html, body { overflow-x: hidden; /* nada de scroll horizontal en toda la app */ }
+html, body { overflow-x: hidden; overflow-x: clip; /* nada de scroll/paneo horizontal jamás */ }
 body {
   font-family: var(--font);
   background: var(--bg);
@@ -128,7 +128,7 @@ input[type="datetime-local"], input[type="date"] { min-height: 42px; }
 }
 .chip.sel { background: var(--accent); color: var(--on-accent); }
 .chip:active { transform: scale(.95); }
-.chips-scroll { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; }
+.chips-scroll { display: flex; gap: 8px; flex-wrap: wrap; padding: 2px 0 6px; scrollbar-width: none; }
 .chips-scroll::-webkit-scrollbar { display: none; }
 
 .fila { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-bottom: 1px solid var(--line); }

@@ -3,7 +3,7 @@
 import { html, useState, useEffect } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
-import { saldoCuenta, saldoConvertido, TIPOS_CUENTA } from '../model.js';
+import { saldoCuenta, saldoConvertido, convertir, TIPOS_CUENTA } from '../model.js';
 import { Sheet, SelectorMoneda, FilaTx } from '../ui.js';
 import { uid, textoAEntero, enteroATexto, fmtConMoneda, isoLocal } from '../util.js';
 
@@ -44,7 +44,9 @@ export default function Cuentas() {
           <div class="titulo">${c.nombre}</div>
           <div class="sub">${[
             c.banco, c.numero && '№ ' + c.numero,
-            c.tipo === 'tarjeta' && c.limite > 0 && `Disponible ${fmtConMoneda(Math.max(0, c.limite + saldoCuenta(c, txs, S.tasas)), c.moneda)}`
+            c.tipo === 'tarjeta' && c.limite > 0 && `Disponible ${fmtConMoneda(Math.max(0, c.limite + saldoCuenta(c, txs, S.tasas)), c.moneda)}`,
+            c.tipo === 'tarjeta' && c.corte && `Corte ${c.corte}`,
+            c.tipo === 'tarjeta' && c.pagoDia && `Pago ${c.pagoDia}`
           ].filter(Boolean).join(' · ') || TIPOS_CUENTA[c.tipo].nombre}</div>
         </div>
         <div style=${{ textAlign: 'right' }}>
@@ -97,7 +99,13 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
     .filter(t => t.cuenta === cuenta.id || t.cuentaDestino === cuenta.id)
     .sort((a, b) => b.fecha.localeCompare(a.fecha))
     .slice(0, 10);
-  const datos = [['Banco', cuenta.banco], ['Número', cuenta.numero], ['Titular', cuenta.titular], ['Notas', cuenta.notas]];
+  const datos = [
+    ['Banco', cuenta.banco], ['Número', cuenta.numero], ['Titular', cuenta.titular],
+    cuenta.corte && ['Fecha de corte', 'día ' + cuenta.corte + ' de cada mes'],
+    cuenta.pagoDia && ['Pago límite', 'día ' + cuenta.pagoDia + ' de cada mes'],
+    cuenta.bolsa && ['Tipo de crédito', cuenta.bolsa === 'compartida' ? 'Bolsa compartida (crédito del banco)' : 'Individual'],
+    ['Notas', cuenta.notas]
+  ];
   const saldo = saldoCuenta(cuenta, txs, S.tasas);
   const conLimite = cuenta.tipo === 'tarjeta' && cuenta.limite > 0;
   return html`<div>
@@ -146,26 +154,61 @@ function EditorCuenta({ c, S, cerrar }) {
     moneda: c.moneda || S.ajustes.monedaPrincipal,
     saldo: c.saldoInicial != null ? enteroATexto(Math.abs(c.saldoInicial), 2) : '',
     limite: c.limite != null ? enteroATexto(c.limite, 2) : '',
+    corte: c.corte || '', pagoDia: c.pagoDia || '', bolsa: c.bolsa || 'individual',
     banco: c.banco || '', numero: c.numero || '', titular: c.titular || '', notas: c.notas || ''
   });
   const pasivo = f.tipo === 'tarjeta' || f.tipo === 'deuda';
   const set = p => setF({ ...f, ...p });
+  const bancosConocidos = [...new Set(S.cuentas.map(x => x.banco).filter(Boolean))];
+
+  const diaValido = t => { const n = parseInt(t, 10); return n >= 1 && n <= 31 ? n : null; };
 
   const guardar = async () => {
     if (!f.nombre.trim()) { toast('Ponle un nombre a la cuenta'); return; }
     const saldo = textoAEntero(f.saldo || '0', 2) || 0;
     const limite = f.tipo === 'tarjeta' ? (textoAEntero(f.limite || '0', 2) || null) : null;
+    const corte = f.tipo === 'tarjeta' ? diaValido(f.corte) : null;
+    const pagoDia = f.tipo === 'tarjeta' ? diaValido(f.pagoDia) : null;
     await fin.guardarCuenta({
       id: c.id || uid(), tipo: f.tipo, nombre: f.nombre.trim(), moneda: f.moneda,
       saldoInicial: pasivo ? -saldo : saldo,
-      limite,
+      limite, corte, pagoDia,
+      bolsa: f.tipo === 'tarjeta' ? f.bolsa : null,
       banco: f.banco.trim() || null, numero: f.numero.trim() || null,
       titular: f.titular.trim() || null, notas: f.notas.trim() || null,
       archivada: c.archivada || false,
       createdAt: c.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString()
     });
     await recargar();
-    toast('✓ Cuenta guardada');
+
+    // Con la nueva configuración (p. ej. límite), los movimientos futuros de esta
+    // tarjeta que ya no quepan en el crédito se eliminan en cascada: quedan los
+    // válidos más cercanos; desde el primero inválido, los siguientes dejan de existir.
+    let eliminados = 0;
+    if (f.tipo === 'tarjeta' && limite) {
+      const cuentaFresca = (await fin.cuentas()).find(x => x.id === (c.id || uid())) || null;
+      const idTarjeta = c.id;
+      if (idTarjeta) {
+        const todas = await fin.todasTx();
+        const disponible0 = limite + saldoCuenta(cuentaFresca || { ...c, limite, saldoInicial: pasivo ? -saldo : saldo }, todas, S.tasas);
+        const gastos = (await fin.futuros())
+          .filter(x => x.tipo === 'gasto' && x.cuenta === idTarjeta)
+          .sort((a, b) => a.fecha.localeCompare(b.fecha));
+        let disp = disponible0, invalido = false;
+        const aEliminar = [];
+        for (const fu of gastos) {
+          disp -= convertir(fu.monto, fu.moneda, f.moneda, S.tasas, fu.fecha);
+          if (invalido || disp < 0) { invalido = true; aEliminar.push(fu.id); }
+        }
+        if (aEliminar.length) {
+          for (const id of aEliminar) await fin.borrarFuturo(id);
+          eliminados = aEliminar.length;
+          await recargar();
+        }
+      }
+    }
+
+    toast(eliminados ? `✓ Cuenta guardada · ${eliminados} movimiento(s) futuro(s) inválidos eliminados` : '✓ Cuenta guardada');
     cerrar();
   };
 
@@ -197,9 +240,37 @@ function EditorCuenta({ c, S, cerrar }) {
             onInput=${e => set({ saldo: e.target.value })} />
         <//>
       <//>
-      ${f.tipo === 'tarjeta' && html`<input placeholder="Límite de crédito (opcional)" inputMode="decimal"
-        value=${f.limite} style=${{ textAlign: 'right' }} onInput=${e => set({ limite: e.target.value })} />`}
-      <input placeholder="Banco (opcional)" value=${f.banco} onInput=${e => set({ banco: e.target.value })} />
+      ${f.tipo === 'tarjeta' && html`<div style=${{ display: 'grid', gap: '8px', background: 'var(--chip)', borderRadius: '14px', padding: '10px' }}>
+        <div class="dato-cuenta" style=${{ fontWeight: 700 }}>CRÉDITO DE LA TARJETA</div>
+        <input placeholder="Límite de crédito (opcional)" inputMode="decimal"
+          value=${f.limite} style=${{ textAlign: 'right' }} onInput=${e => set({ limite: e.target.value })} />
+        <div style=${{ display: 'flex', gap: '8px' }}>
+          <div style=${{ flex: 1 }}>
+            <div class="dato-cuenta">Fecha de corte (día)</div>
+            <input inputMode="numeric" placeholder="Ej. 12" value=${f.corte} inputMode="numeric" style=${{ textAlign: 'right' }}
+              onInput=${e => set({ corte: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) })} />
+          <//>
+          <div style=${{ flex: 1 }}>
+            <div class="dato-cuenta">Pago límite (día)</div>
+            <input inputMode="numeric" placeholder="Ej. 28" value=${f.pagoDia} style=${{ textAlign: 'right' }}
+              onInput=${e => set({ pagoDia: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) })} />
+          <//>
+        <//>
+        <div>
+          <div class="dato-cuenta">Tipo de crédito</div>
+          <div class="segmentado" style=${{ marginTop: '4px' }}>
+            <button class=${f.bolsa === 'individual' ? 'sel' : ''} onClick=${() => set({ bolsa: 'individual' })}>Individual</button>
+            <button class=${f.bolsa === 'compartida' ? 'sel' : ''} onClick=${() => set({ bolsa: 'compartida' })}>Bolsa compartida</button>
+          <//>
+          <div class="dato-cuenta" style=${{ marginTop: '4px' }}>${f.bolsa === 'compartida'
+            ? 'El límite es el crédito total del banco, compartido entre tus tarjetas.'
+            : 'El límite pertenece solo a esta tarjeta.'}</div>
+        <//>
+      <//>`}
+      <input placeholder="Banco (opcional)" list="bancos-conocidos" value=${f.banco} onInput=${e => set({ banco: e.target.value })} />
+      <datalist id="bancos-conocidos">
+        ${bancosConocidos.map(b => html`<option key=${b} value=${b} />`)}
+      </datalist>
       <input placeholder="Número de cuenta/tarjeta (opcional)" value=${f.numero} inputMode="numeric" onInput=${e => set({ numero: e.target.value })} />
       <input placeholder="Titular o alias (opcional)" value=${f.titular} onInput=${e => set({ titular: e.target.value })} />
       <textarea placeholder="Notas (opcional)" rows="2" value=${f.notas} onInput=${e => set({ notas: e.target.value })}></textarea>
