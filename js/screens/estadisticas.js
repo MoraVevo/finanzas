@@ -136,6 +136,7 @@ function VistaFlujo({ S, todo }) {
   const principal = S.ajustes.monedaPrincipal;
   const [horizonte, setHorizonte] = useState(1);
   const [cuentaScope, setCuentaScope] = useState(null); // null = patrimonio
+  const [grafica, setGrafica] = useState('linea'); // 'linea' | 'pie' | 'barras'
   const [editor, setEditor] = useState(null);
 
   const fl = useMemo(() => flujoEfectivo({
@@ -199,11 +200,19 @@ function VistaFlujo({ S, todo }) {
     </div>
 
     <div class="tarjeta">
-      <h3 style=${{ fontSize: '11px' }}>${nombreScope ? `${nombreScope} en el tiempo` : 'Tu patrimonio en el tiempo'}</h3>
-      <${ChartFlujo} fl=${fl} principal=${principal} />
-      <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-        <span>▬ Real</span><span>┄ Registrado por ti</span>
+      <div class="segmentado" style=${{ marginBottom: '10px' }}>
+        ${[['linea', '📈 Línea'], ['pie', '🥧 Pie'], ['barras', '📊 Barras']].map(([v, t]) => html`
+          <button key=${v} class=${grafica === v ? 'sel' : ''} onClick=${() => setGrafica(v)}>${t}</button>`)}
       </div>
+      ${grafica === 'linea' && html`<div>
+        <h3 style=${{ fontSize: '11px' }}>${nombreScope ? `${nombreScope} en el tiempo` : 'Tu patrimonio en el tiempo'}</h3>
+        <${ChartFlujo} fl=${fl} principal=${principal} />
+        <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+          <span>▬ Real</span><span>┄ Registrado por ti</span>
+        </div>
+      <//>`}
+      ${grafica === 'pie' && html`<${ChartPie} S=${S} fl=${fl} principal=${principal} />`}
+      ${grafica === 'barras' && html`<${ChartBarrasFuturo} S=${S} fl=${fl} principal=${principal} horizonte=${horizonte} />`}
     </div>
 
     <div class="tarjeta">
@@ -405,6 +414,111 @@ function EditorFuturo({ f, S, cerrar }) {
       excluir=${d.tipo === 'transferencia' && picker === 'destino' ? d.cuenta : null}
       onPick=${c => { setPicker(null); set(picker === 'destino' ? { cuentaDestino: c.id } : { cuenta: c.id }); }}
       onClose=${() => setPicker(null)} />`}
+  </div>`;
+}
+
+/* ---------- Pie: distribución de lo proyectado ---------- */
+function ChartPie({ S, fl, principal }) {
+  // conjuntos: ingresos futuros, gastos futuros, transferencias; por cuenta
+  const conjuntos = [];
+  const porTipo = new Map();
+  const porCuenta = new Map();
+  for (const f of fl.lista) {
+    const montoP = convertir(f.monto, f.moneda, principal, S.tasas, f.fecha);
+    const etiquetaTipo = f.tipo === 'ingreso' ? '💰 Ingresos' : f.tipo === 'gasto' ? '🔻 Gastos' : '🔁 Transferencias';
+    porTipo.set(etiquetaTipo, (porTipo.get(etiquetaTipo) || 0) + montoP);
+    const idC = f.tipo === 'transferencia' ? f.cuenta : f.cuenta;
+    const nombreC = f.tipo === 'transferencia'
+      ? `${S.cuentas.find(c => c.id === f.cuenta)?.nombre || '?'} →`
+      : (S.cuentas.find(c => c.id === f.cuenta)?.nombre || 'Sin cuenta');
+    porCuenta.set(nombreC, (porCuenta.get(nombreC) || 0) + montoP);
+  }
+  const grupos = [['Por tipo', porTipo], ['Por cuenta de origen', porCuenta]].filter(([, m]) => m.size > 0);
+  const COLORES = ['#0e8c6c', '#d64550', '#5b6b8c', '#d69e2e', '#805ad5', '#3182ce', '#dd6b20', '#38a169'];
+
+  const arco = (cx, cy, r, a0, a1) => {
+    const grande = a1 - a0 > Math.PI ? 1 : 0;
+    const p0 = [cx + r * Math.cos(a0), cy + r * Math.sin(a0)];
+    const p1 = [cx + r * Math.cos(a1), cy + r * Math.sin(a1)];
+    return `M${cx},${cy} L${p0[0].toFixed(2)},${p0[1].toFixed(2)} A${r},${r} 0 ${grande} 1 ${p1[0].toFixed(2)},${p1[1].toFixed(2)} Z`;
+  };
+
+  return html`<div>
+    ${grupos.map(([titulo, mapa]) => {
+      const total = [...mapa.values()].reduce((s, v) => s + v, 0);
+      const items = [...mapa.entries()].sort((a, b) => b[1] - a[1]);
+      return html`<div key=${titulo} style=${{ marginBottom: '14px' }}>
+        <h3 style=${{ fontSize: '11px' }}>${titulo} · total ${fmtConMoneda(total, principal)}</h3>
+        <div style=${{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <svg viewBox="0 0 42 42" style=${{ width: '110px', height: '110px', flexShrink: 0, transform: 'rotate(-90deg)' }}>
+            <circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--chip)" stroke-width="6" />
+            ${(() => {
+              let a = 0;
+              return items.map(([nom, val], i) => {
+                const frac = total ? val / total : 0;
+                const a0 = a, a1 = a + frac * Math.PI * 2 - 0.02;
+                a += frac * Math.PI * 2;
+                return html`<path key=${i} d=${arco(21, 21, 15.9, a0, a1)} fill=${COLORES[i % COLORES.length]}>
+                  <title>${nom}: ${fmtConMoneda(val, principal)} (${Math.round(frac * 100)}%)</title>
+                <//>`;
+              });
+            })()}
+          </svg>
+          <div style=${{ flex: 1, minWidth: 0 }}>
+            ${items.map(([nom, val], i) => html`<div key=${i} style=${{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', marginBottom: '3px' }}>
+              <span style=${{ width: '9px', height: '9px', borderRadius: '3px', background: COLORES[i % COLORES.length], flexShrink: 0 }}></span>
+              <span style=${{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>${nom}</span>
+              <b class="num">${Math.round(total ? val / total * 100 : 0)}%</b>
+            </div>`)}
+          </div>
+        <//>
+      <//>`;
+    })}
+    ${grupos.length === 0 && html`<div class="vacio">Registra movimientos futuros para ver su distribución.</div>`}
+  </div>`;
+}
+
+/* ---------- Barras: ingreso vs gasto futuro, mes a mes ---------- */
+function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
+  const porMes = new Map();
+  for (const f of fl.lista) {
+    const clave = f.fecha.slice(0, 7);
+    const e = porMes.get(clave) || { in: 0, out: 0 };
+    const montoP = convertir(f.monto, f.moneda, principal, S.tasas, f.fecha);
+    if (f.tipo === 'ingreso') e.in += montoP;
+    else if (f.tipo === 'gasto') e.out += montoP;
+    else { e.in += montoP; e.out += (f.montoDestino ? convertir(f.montoDestino, f.monedaDestino || f.moneda, principal, S.tasas, f.fecha) : montoP); }
+    porMes.set(clave, e);
+  }
+  const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const meses = [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  const max = Math.max(1, ...meses.flatMap(([, e]) => [e.in, e.out]));
+  const W = 320, H = 170, PB = 26, PT = 8;
+  const bw = W / Math.max(1, meses.length);
+
+  return html`<div>
+    <h3 style=${{ fontSize: '11px' }}>Ingreso vs gasto proyectado · por mes</h3>
+    <svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: '170px' }}>
+      ${meses.map(([clave, e], i) => {
+        const hi = (H - PB - PT) * e.in / max;
+        const ho = (H - PB - PT) * e.out / max;
+        const nomMes = MESES3[+clave.slice(5, 7) - 1] + (clave.slice(2, 4));
+        return html`<g key=${clave}>
+          <rect x=${i * bw + 3} y=${H - PB - hi} width=${bw / 2 - 4} height=${Math.max(2, hi)} rx="3" fill="var(--ingreso)" opacity=".9">
+            <title>Ingresos ${nomMes}: ${fmtConMoneda(e.in, principal)}</title>
+          </rect>
+          <rect x=${i * bw + bw / 2 + 1} y=${H - PB - ho} width=${bw / 2 - 4} height=${Math.max(2, ho)} rx="3" fill="var(--gasto)" opacity=".9">
+            <title>Gastos ${nomMes}: ${fmtConMoneda(e.out, principal)}</title>
+          </rect>
+          <text x=${i * bw + bw / 2} y=${H - 14} textAnchor="middle" style=${{ fontSize: '7px' }} fill="var(--muted)">${nomMes}</text>
+          ${i % 2 === 0 && html`<text x=${i * bw + bw / 2} y=${H - 4} textAnchor="middle" style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtMonto(Math.round(Math.max(e.in, e.out) / 1000) * 1000, 0)}</text>`}
+        </g>`;
+      })}
+    </svg>
+    <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
+      <span>🟩 Ingresos</span><span>🟥 Gastos</span>
+    </div>
+    ${meses.length === 0 && html`<div class="vacio">Sin movimientos futuros aún en el horizonte de ${horizonte} mes(es).</div>`}
   </div>`;
 }
 
