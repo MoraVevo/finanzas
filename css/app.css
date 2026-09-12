@@ -40,6 +40,7 @@
 /* ============ Base ============ */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; padding: 0; }
+html, body { overflow-x: hidden; /* nada de scroll horizontal en toda la app */ }
 body {
   font-family: var(--font);
   background: var(--bg);
@@ -51,7 +52,7 @@ button { font-family: inherit; color: inherit; background: none; border: none; c
 input, select, textarea {
   font-family: inherit; font-size: 16px; color: var(--text);
   background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
-  padding: 10px 12px; outline: none; width: 100%;
+  padding: 10px 12px; outline: none; width: 100%; min-width: 0;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 input[type="datetime-local"], input[type="date"] { min-height: 42px; }
@@ -225,6 +226,7 @@ input[type="datetime-local"], input[type="date"] { min-height: 42px; }
 }
 .sheet {
   background: var(--bg); width: 100%; max-width: 520px; max-height: 88dvh; overflow-y: auto;
+  overflow-x: hidden; /* los márgenes negativos de la asa no ensanchan la hoja */
   overscroll-behavior: contain; /* el rebote/scroll no se pasa a la página de atrás */
   border-radius: 22px 22px 0 0; padding: 0 18px calc(env(safe-area-inset-bottom, 0px) + 20px);
   animation: subir .22s cubic-bezier(.2,.9,.3,1);
