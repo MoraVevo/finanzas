@@ -6,7 +6,7 @@ import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-
 import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
 import { statsMes, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, TIPOS_CUENTA } from '../model.js';
-import { Sheet, PickerCuentas } from '../ui.js';
+import { Sheet, PickerCuentas, GridCategorias } from '../ui.js';
 import { fmtConMoneda, fmtMonto, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
 export default function Estadisticas() {
@@ -158,7 +158,7 @@ function VistaFlujo({ S, todo }) {
       cuenta: f.cuenta || S.cuentas.filter(c => !c.archivada)[0]?.id || null,
       cuentaDestino: f.cuentaDestino || null,
       montoDestino: f.montoDestino ?? null,
-      categoria: null, etiquetas: [], motivo: f.nombre || null,
+      categoria: f.categoria || null, etiquetas: [], motivo: f.nombre || null,
       fecha: f.fecha + 'T' + isoLocal().slice(11, 16),
       adjuntos: [], eliminada: false,
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
@@ -272,7 +272,8 @@ function EditorFuturo({ f, S, cerrar }) {
     nombre: f.nombre || '', tipo: f.tipo || 'ingreso',
     monto: f.monto ? enteroATexto(f.monto, 2) : '', moneda: f.moneda || S.ajustes.monedaPrincipal,
     fecha: f.fecha || isoDia(), repetir: 'unica',
-    cuenta: f.cuenta || null, cuentaDestino: f.cuentaDestino || null
+    cuenta: f.cuenta || null, cuentaDestino: f.cuentaDestino || null,
+    categoria: f.categoria || null
   });
   const [picker, setPicker] = useState(null); // 'cuenta' | 'destino'
   const set = p => setD({ ...d, ...p });
@@ -339,6 +340,7 @@ function EditorFuturo({ f, S, cerrar }) {
         id: f.id && fechas.length === 1 ? f.id : uid(),
         nombre: d.nombre.trim() || null, tipo: d.tipo, monto, moneda: d.moneda, fecha,
         cuenta: d.tipo === 'transferencia' ? cuentaObj?.id : (d.tipo === 'gasto' || d.tipo === 'ingreso' ? d.cuenta : null),
+        categoria: d.tipo === 'transferencia' ? null : d.categoria,
         cuentaDestino: d.tipo === 'transferencia' ? destinoObj?.id : null,
         montoDestino: distinta ? convertir(monto, cuentaObj.moneda, destinoObj.moneda, S.tasas, isoDia()) : null,
         monedaDestino: distinta ? destinoObj.moneda : null,
@@ -360,9 +362,9 @@ function EditorFuturo({ f, S, cerrar }) {
 
   return html`<div>
     <div class="segmentado" style=${{ marginBottom: '10px' }}>
-      <button class=${d.tipo === 'ingreso' ? 'sel' : ''} onClick=${() => set({ tipo: 'ingreso' })}>💰 Ingreso</button>
-      <button class=${d.tipo === 'gasto' ? 'sel' : ''} onClick=${() => set({ tipo: 'gasto' })}>🔻 Gasto</button>
-      <button class=${d.tipo === 'transferencia' ? 'sel' : ''} onClick=${() => set({ tipo: 'transferencia' })}>🔁 Transferencia</button>
+      <button class=${d.tipo === 'ingreso' ? 'sel' : ''} onClick=${() => set({ tipo: 'ingreso', categoria: null })}>💰 Ingreso</button>
+      <button class=${d.tipo === 'gasto' ? 'sel' : ''} onClick=${() => set({ tipo: 'gasto', categoria: null })}>🔻 Gasto</button>
+      <button class=${d.tipo === 'transferencia' ? 'sel' : ''} onClick=${() => set({ tipo: 'transferencia', categoria: null })}>🔁 Transferencia</button>
     </div>
     <div style=${{ display: 'grid', gap: '8px' }}>
       ${d.tipo !== 'transferencia' && html`<input placeholder="Nombre (ej. Salario, Alquiler…)" value=${d.nombre}
@@ -393,6 +395,12 @@ function EditorFuturo({ f, S, cerrar }) {
         <//>
       <//>`}
 
+      ${d.tipo !== 'transferencia' && html`<div>
+        <div class="dato-cuenta">Categoría (opcional)</div>
+        <${GridCategorias} categorias=${S.categorias.filter(c => c.tipo === d.tipo)}
+          valor=${d.categoria} onPick=${id => set({ categoria: d.categoria === id ? null : id })} />
+      <//>`}
+
       <div>
         <div class="dato-cuenta">¿Cuándo?</div>
         <input type="date" value=${d.fecha} onChange=${e => set({ fecha: e.target.value || isoDia() })} />
@@ -417,23 +425,46 @@ function EditorFuturo({ f, S, cerrar }) {
   </div>`;
 }
 
-/* ---------- Pie: distribución de lo proyectado ---------- */
+/* ---------- Pie: distribución de lo proyectado, con granularidad ----------
+   Dimensiones: por tipo, por categoría, por cuenta (origen/origen→destino)
+   y por fuente (el nombre que le diste al movimiento). */
 function ChartPie({ S, fl, principal }) {
-  // conjuntos: ingresos futuros, gastos futuros, transferencias; por cuenta
-  const conjuntos = [];
-  const porTipo = new Map();
-  const porCuenta = new Map();
+  const [dim, setDim] = useState('tipo');
+  const DIMS = [['tipo', 'Tipo'], ['categoria', 'Categoría'], ['cuenta', 'Cuenta'], ['fuente', 'Fuente']];
+  const nombreC = id => S.cuentas.find(c => c.id === id)?.nombre || null;
+  const ruta = f => `${nombreC(f.cuenta) || '?'} → ${nombreC(f.cuentaDestino) || '?'}`;
+
+  const etiqueta = f => {
+    if (dim === 'tipo') return f.tipo === 'ingreso' ? '💰 Ingresos' : f.tipo === 'gasto' ? '🔻 Gastos' : '🔁 Transferencias';
+    if (dim === 'categoria') {
+      if (f.tipo === 'transferencia') return '🔁 Transferencias';
+      const cat = S.categorias.find(c => c.id === f.categoria);
+      return cat ? `${cat.emoji} ${cat.nombre}` : 'Sin categoría';
+    }
+    if (dim === 'cuenta') {
+      if (f.tipo === 'transferencia') return ruta(f);
+      return nombreC(f.cuenta) || 'Sin cuenta';
+    }
+    if (f.tipo === 'transferencia') return '🔁 ' + ruta(f);
+    return f.nombre?.trim() || 'Sin nombre';
+  };
+
+  const mapa = new Map();
+  let entra = 0, sale = 0, mueve = 0;
   for (const f of fl.lista) {
     const montoP = convertir(f.monto, f.moneda, principal, S.tasas, f.fecha);
-    const etiquetaTipo = f.tipo === 'ingreso' ? '💰 Ingresos' : f.tipo === 'gasto' ? '🔻 Gastos' : '🔁 Transferencias';
-    porTipo.set(etiquetaTipo, (porTipo.get(etiquetaTipo) || 0) + montoP);
-    const idC = f.tipo === 'transferencia' ? f.cuenta : f.cuenta;
-    const nombreC = f.tipo === 'transferencia'
-      ? `${S.cuentas.find(c => c.id === f.cuenta)?.nombre || '?'} →`
-      : (S.cuentas.find(c => c.id === f.cuenta)?.nombre || 'Sin cuenta');
-    porCuenta.set(nombreC, (porCuenta.get(nombreC) || 0) + montoP);
+    if (f.tipo === 'ingreso') entra += montoP;
+    else if (f.tipo === 'gasto') sale += montoP;
+    else mueve += montoP;
+    const k = etiqueta(f);
+    mapa.set(k, (mapa.get(k) || 0) + montoP);
   }
-  const grupos = [['Por tipo', porTipo], ['Por cuenta de origen', porCuenta]].filter(([, m]) => m.size > 0);
+  let items = [...mapa.entries()].sort((a, b) => b[1] - a[1]);
+  if (items.length > 8) {
+    const resto = items.slice(7).reduce((s, [, v]) => s + v, 0);
+    items = items.slice(0, 7).concat([['Otros', resto]]);
+  }
+  const total = items.reduce((s, [, v]) => s + v, 0);
   const COLORES = ['#0e8c6c', '#d64550', '#5b6b8c', '#d69e2e', '#805ad5', '#3182ce', '#dd6b20', '#38a169'];
 
   const arco = (cx, cy, r, a0, a1) => {
@@ -444,81 +475,42 @@ function ChartPie({ S, fl, principal }) {
   };
 
   return html`<div>
-    ${grupos.map(([titulo, mapa]) => {
-      const total = [...mapa.values()].reduce((s, v) => s + v, 0);
-      const items = [...mapa.entries()].sort((a, b) => b[1] - a[1]);
-      return html`<div key=${titulo} style=${{ marginBottom: '14px' }}>
-        <h3 style=${{ fontSize: '11px' }}>${titulo} · total ${fmtConMoneda(total, principal)}</h3>
-        <div style=${{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <svg viewBox="0 0 42 42" style=${{ width: '110px', height: '110px', flexShrink: 0, transform: 'rotate(-90deg)' }}>
-            <circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--chip)" stroke-width="6" />
-            ${(() => {
-              let a = 0;
-              return items.map(([nom, val], i) => {
-                const frac = total ? val / total : 0;
-                const a0 = a, a1 = a + frac * Math.PI * 2 - 0.02;
-                a += frac * Math.PI * 2;
-                return html`<path key=${i} d=${arco(21, 21, 15.9, a0, a1)} fill=${COLORES[i % COLORES.length]}>
-                  <title>${nom}: ${fmtConMoneda(val, principal)} (${Math.round(frac * 100)}%)</title>
-                <//>`;
-              });
-            })()}
-          </svg>
-          <div style=${{ flex: 1, minWidth: 0 }}>
-            ${items.map(([nom, val], i) => html`<div key=${i} style=${{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', marginBottom: '3px' }}>
-              <span style=${{ width: '9px', height: '9px', borderRadius: '3px', background: COLORES[i % COLORES.length], flexShrink: 0 }}></span>
-              <span style=${{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>${nom}</span>
-              <b class="num">${Math.round(total ? val / total * 100 : 0)}%</b>
-            </div>`)}
-          </div>
-        <//>
-      <//>`;
-    })}
-    ${grupos.length === 0 && html`<div class="vacio">Registra movimientos futuros para ver su distribución.</div>`}
-  </div>`;
-}
-
-/* ---------- Barras: ingreso vs gasto futuro, mes a mes ---------- */
-function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
-  const porMes = new Map();
-  for (const f of fl.lista) {
-    const clave = f.fecha.slice(0, 7);
-    const e = porMes.get(clave) || { in: 0, out: 0 };
-    const montoP = convertir(f.monto, f.moneda, principal, S.tasas, f.fecha);
-    if (f.tipo === 'ingreso') e.in += montoP;
-    else if (f.tipo === 'gasto') e.out += montoP;
-    else { e.in += montoP; e.out += (f.montoDestino ? convertir(f.montoDestino, f.monedaDestino || f.moneda, principal, S.tasas, f.fecha) : montoP); }
-    porMes.set(clave, e);
-  }
-  const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-  const meses = [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  const max = Math.max(1, ...meses.flatMap(([, e]) => [e.in, e.out]));
-  const W = 320, H = 170, PB = 26, PT = 8;
-  const bw = W / Math.max(1, meses.length);
-
-  return html`<div>
-    <h3 style=${{ fontSize: '11px' }}>Ingreso vs gasto proyectado · por mes</h3>
-    <svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: '170px' }}>
-      ${meses.map(([clave, e], i) => {
-        const hi = (H - PB - PT) * e.in / max;
-        const ho = (H - PB - PT) * e.out / max;
-        const nomMes = MESES3[+clave.slice(5, 7) - 1] + (clave.slice(2, 4));
-        return html`<g key=${clave}>
-          <rect x=${i * bw + 3} y=${H - PB - hi} width=${bw / 2 - 4} height=${Math.max(2, hi)} rx="3" fill="var(--ingreso)" opacity=".9">
-            <title>Ingresos ${nomMes}: ${fmtConMoneda(e.in, principal)}</title>
-          </rect>
-          <rect x=${i * bw + bw / 2 + 1} y=${H - PB - ho} width=${bw / 2 - 4} height=${Math.max(2, ho)} rx="3" fill="var(--gasto)" opacity=".9">
-            <title>Gastos ${nomMes}: ${fmtConMoneda(e.out, principal)}</title>
-          </rect>
-          <text x=${i * bw + bw / 2} y=${H - 14} textAnchor="middle" style=${{ fontSize: '7px' }} fill="var(--muted)">${nomMes}</text>
-          ${i % 2 === 0 && html`<text x=${i * bw + bw / 2} y=${H - 4} textAnchor="middle" style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtMonto(Math.round(Math.max(e.in, e.out) / 1000) * 1000, 0)}</text>`}
-        </g>`;
-      })}
-    </svg>
-    <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-      <span>🟩 Ingresos</span><span>🟥 Gastos</span>
+    <div class="chips-scroll" style=${{ marginBottom: '10px' }}>
+      ${DIMS.map(([v, t]) => html`<button key=${v} class=${'chip' + (dim === v ? ' sel' : '')}
+        onClick=${() => setDim(v)}>${t}</button>`)}
     </div>
-    ${meses.length === 0 && html`<div class="vacio">Sin movimientos futuros aún en el horizonte de ${horizonte} mes(es).</div>`}
+    ${total === 0 && html`<div class="vacio">Registra movimientos futuros para ver su distribución.</div>`}
+    ${total > 0 && html`<div>
+      ${dim === 'tipo' && html`<div class="dato-cuenta" style=${{ marginBottom: '8px', textAlign: 'center' }}>
+        Entra <b class="num" style=${{ color: 'var(--ingreso)' }}>+${fmtMonto(entra, 2)}</b> · Sale
+        <b class="num" style=${{ color: 'var(--gasto)' }}>−${fmtMonto(sale, 2)}</b> · Se mueve
+        <b class="num">↻ ${fmtMonto(mueve, 2)}</b> (${principal})
+      <//>`}
+      <div style=${{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <svg viewBox="0 0 42 42" style=${{ width: '110px', height: '110px', flexShrink: 0, transform: 'rotate(-90deg)' }}>
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="var(--chip)" stroke-width="6" />
+          ${(() => {
+            let a = 0;
+            return items.map(([nom, val], i) => {
+              const frac = total ? val / total : 0;
+              const a0 = a, a1 = a + frac * Math.PI * 2 - 0.02;
+              a += frac * Math.PI * 2;
+              return html`<path key=${i} d=${arco(21, 21, 15.9, a0, Math.max(a0 + 0.01, a1))} fill=${COLORES[i % COLORES.length]}>
+                <title>${nom}: ${fmtConMoneda(val, principal)} (${Math.round(frac * 100)}%)</title>
+              <//>`;
+            });
+          })()}
+        <//>
+        <div style=${{ flex: 1, minWidth: 0 }}>
+          ${items.map(([nom, val], i) => html`<div key=${i} style=${{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', marginBottom: '3px' }}>
+            <span style=${{ width: '9px', height: '9px', borderRadius: '3px', background: COLORES[i % COLORES.length], flexShrink: 0 }}></span>
+            <span style=${{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>${nom}</span>
+            <span class="num" style=${{ color: 'var(--muted)', fontSize: '10.5px' }}>${fmtConMoneda(val, principal)}</span>
+            <b class="num">${Math.round(total ? val / total * 100 : 0)}%</b>
+          <//>`)}
+        <//>
+      <//>
+    <//>`}
   </div>`;
 }
 
