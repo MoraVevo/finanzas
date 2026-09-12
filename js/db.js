@@ -16,6 +16,13 @@ db.version(1).stores({
   ajustes: 'key'
 });
 
+// v2: tasa de cambio por defecto USD -> GTQ para dispositivos que ya tenían datos.
+db.version(2).stores({}).upgrade(async tx => {
+  if ((await tx.table('tasas').count()) === 0) {
+    await tx.table('tasas').add({ de: 'USD', a: 'GTQ', valor: 7.88, fecha: new Date().toISOString().slice(0, 10) });
+  }
+});
+
 const fin = {};
 
 /* ---------- ajustes (key/value) ---------- */
@@ -103,6 +110,9 @@ fin.inicial = async () => {
     for (const [emoji, nombre] of gasto) cats.push({ id: uid(), tipo: 'gasto', nombre, emoji });
     for (const [emoji, nombre] of ingreso) cats.push({ id: uid(), tipo: 'ingreso', nombre, emoji });
     await db.categorias.bulkPut(cats);
+  }
+  if ((await db.tasas.count()) === 0) {
+    await db.tasas.add({ de: 'USD', a: 'GTQ', valor: 7.88, fecha: new Date().toISOString().slice(0, 10) });
   }
   if (!(await fin.getAjuste('monedaPrincipal'))) await fin.setAjuste('monedaPrincipal', 'GTQ');
 };

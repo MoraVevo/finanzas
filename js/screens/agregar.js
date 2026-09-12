@@ -1,6 +1,7 @@
 // Pantalla Agregar: captura rápida (gasto/ingreso/transferencia) y edición.
-// Teclado numérico propio (nunca el teclado del sistema), cuenta preseleccionada,
-// categorías frecuentes primero y el resto de campos opcionales nunca estorba.
+// Monto y teclado viven en el panel inferior fijo: siempre visibles al digitar.
+// Al capturar se elige la moneda (chips GTQ/USD); si difiere de la de la cuenta,
+// el saldo se ajusta con la tasa de cambio registrada.
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast, getState } from '../store.js';
@@ -29,7 +30,7 @@ export default function Agregar({ txId }) {
         const existentes = adj.map(a => ({ id: a.id, url: URL.createObjectURL(a.blob) }));
         const dec = monedaInfo(tx.moneda).dec;
         setDatos({
-          tipo: tx.tipo,
+          tipo: tx.tipo, moneda: tx.moneda,
           montoStr: (tx.monto / 10 ** dec).toFixed(dec).replace(/\.?0+$/, m => (m === '.' + '0'.repeat(dec) ? '' : m)),
           cuenta: tx.cuenta, destino: tx.cuentaDestino || null, montoDestinoStr: '',
           categoria: tx.categoria || null, etiquetas: tx.etiquetas || [], motivo: tx.motivo || '',
@@ -39,7 +40,7 @@ export default function Agregar({ txId }) {
         const ult = S.ajustes.ultimaCuenta || {};
         const activas = S.cuentas.filter(c => !c.archivada);
         setDatos({
-          tipo: 'gasto', montoStr: '',
+          tipo: 'gasto', moneda: null, montoStr: '',
           cuenta: activas.find(c => c.id === ult.gasto)?.id || activas[0]?.id || null,
           destino: activas.find(c => c.id === ult.transferDestino)?.id || null,
           montoDestinoStr: '', categoria: null, etiquetas: [], motivo: '',
@@ -58,11 +59,16 @@ export default function Agregar({ txId }) {
   const set = p => setDatos({ ...datos, ...p });
   const cuentaObj = S.cuentas.find(c => c.id === datos.cuenta);
   const destinoObj = S.cuentas.find(c => c.id === datos.destino);
-  const decCuenta = cuentaObj ? monedaInfo(cuentaObj.moneda).dec : 2;
   const principal = S.ajustes.monedaPrincipal;
-  const entero = textoAEntero(datos.montoStr, decCuenta);
+  // La transferencia siempre se registra en la moneda de la cuenta de origen.
+  const moneda = datos.tipo === 'transferencia'
+    ? (cuentaObj?.moneda || principal)
+    : (datos.moneda || cuentaObj?.moneda || principal);
+  const decMonto = monedaInfo(moneda).dec;
+  const entero = textoAEntero(datos.montoStr, decMonto);
   const distintaMoneda = datos.tipo === 'transferencia' && destinoObj && cuentaObj && destinoObj.moneda !== cuentaObj.moneda;
   const enteroDestino = distintaMoneda ? textoAEntero(datos.montoDestinoStr, monedaInfo(destinoObj.moneda).dec) : null;
+  const opcionesMoneda = [...new Set([cuentaObj?.moneda, 'GTQ', 'USD'])].filter(Boolean);
 
   const catsOrdenadas = useMemo(() => {
     if (datos.tipo === 'transferencia') return [];
@@ -86,8 +92,12 @@ export default function Agregar({ txId }) {
     return Number(ent || 0).toLocaleString('en-US') + (frac !== undefined ? '.' + frac : '');
   })();
 
-  const conversion = entero && cuentaObj && cuentaObj.moneda !== principal
-    ? fmtConMoneda(convertir(entero, cuentaObj.moneda, principal, S.tasas, datos.fecha), principal) : null;
+  const conversionCuenta = entero && cuentaObj && moneda !== cuentaObj.moneda
+    ? fmtConMoneda(convertir(entero, moneda, cuentaObj.moneda, S.tasas, datos.fecha), cuentaObj.moneda)
+    : null;
+  const conversionPrincipal = !conversionCuenta && entero && moneda !== principal
+    ? fmtConMoneda(convertir(entero, moneda, principal, S.tasas, datos.fecha), principal)
+    : null;
 
   const agregarFoto = async archivo => {
     try {
@@ -101,11 +111,14 @@ export default function Agregar({ txId }) {
   const guardar = async () => {
     if (!puede) return;
     const d = datos;
+    const monedaFinal = d.tipo === 'transferencia'
+      ? cuentaObj.moneda
+      : (d.moneda || cuentaObj.moneda || principal);
     const tx = d.editando
       ? { ...d.editando }
       : { id: uid(), createdAt: new Date().toISOString() };
     Object.assign(tx, {
-      tipo: d.tipo, monto: entero, moneda: cuentaObj.moneda, cuenta: cuentaObj.id,
+      tipo: d.tipo, monto: entero, moneda: monedaFinal, cuenta: cuentaObj.id,
       cuentaDestino: d.tipo === 'transferencia' ? destinoObj.id : null,
       montoDestino: distintaMoneda
         ? (enteroDestino ?? convertir(entero, cuentaObj.moneda, destinoObj.moneda, S.tasas, d.fecha))
@@ -138,7 +151,7 @@ export default function Agregar({ txId }) {
       nav(getState().routeAnterior || '#/');
     } else {
       d.nuevas.forEach(a => URL.revokeObjectURL(a.url));
-      toast(`✓ ${ETIQUETA_TIPO[d.tipo]} de ${fmtConMoneda(entero, cuentaObj.moneda)} guardado`);
+      toast(`✓ ${ETIQUETA_TIPO[d.tipo]} de ${fmtConMoneda(entero, monedaFinal)} guardado`);
       setDatos({ ...d, montoStr: '', categoria: null, etiquetas: [], motivo: '', fecha: isoLocal(), nuevas: [], existentes: [] });
     }
   };
@@ -168,7 +181,7 @@ export default function Agregar({ txId }) {
     });
   };
 
-  const simbolo = cuentaObj ? monedaInfo(cuentaObj.moneda).simbolo : '';
+  const simbolo = monedaInfo(moneda).simbolo;
 
   return html`<div class="pantalla-agregar">
     <div class="pa-sup">
@@ -183,14 +196,11 @@ export default function Agregar({ txId }) {
     </div>
 
     <div class="pa-scroll">
-      <div class="pa-monto num"><span class="simbolo">${simbolo}</span>${montoFormateado}</div>
-      <div class="pa-conv">${conversion ? '≈ ' + conversion : (datos.tipo === 'transferencia' ? 'Mueve dinero entre tus cuentas · no es gasto' : ' ')}</div>
-
       <div class="pa-seccion">
         <label>${datos.tipo === 'transferencia' ? 'Desde' : 'Cuenta'}</label>
         <div class="chips-scroll">
           <button class="chip" onClick=${() => setPicker('cuenta')}>
-            ${cuentaObj ? `${TIPOS_CUENTA[cuentaObj.tipo].emoji} ${cuentaObj.nombre} · ${fmtConMoneda(saldoCuenta(cuentaObj, txs), cuentaObj.moneda)}` : 'Elegir cuenta'}
+            ${cuentaObj ? `${TIPOS_CUENTA[cuentaObj.tipo].emoji} ${cuentaObj.nombre} · ${fmtConMoneda(saldoCuenta(cuentaObj, txs, S.tasas), cuentaObj.moneda)}` : 'Elegir cuenta'}
           </button>
           ${datos.tipo === 'transferencia' && html`<span style=${{ alignSelf: 'center', color: 'var(--muted)', fontSize: '18px' }}>→</span>
             <button class="chip" onClick=${() => setPicker('destino')}>
@@ -243,6 +253,18 @@ export default function Agregar({ txId }) {
     </div>
 
     <div class="pa-inferior">
+      <div class="pa-monto-fila">
+        <div class="pa-monto num"><span class="simbolo">${simbolo}</span>${montoFormateado}</div>
+        ${datos.tipo !== 'transferencia' && html`<div class="pa-monedas">
+          ${opcionesMoneda.map(m => html`<button key=${m} class=${'chip' + (m === moneda ? ' sel' : '')}
+            onClick=${() => set({ moneda: m })}>${m}</button>`)}
+        <//>`}
+      </div>
+      <div class="pa-conv">
+        ${conversionCuenta ? `≈ ${conversionCuenta} en ${cuentaObj.nombre}`
+          : conversionPrincipal ? `≈ ${conversionPrincipal}`
+          : (datos.tipo === 'transferencia' ? 'Mueve dinero entre tus cuentas · no es gasto' : ' ')}
+      </div>
       <button class="btn btn-primario" disabled=${!puede} onClick=${guardar}>
         ${datos.editando ? 'Guardar cambios' : 'Guardar'}
       </button>
@@ -253,7 +275,7 @@ export default function Agregar({ txId }) {
       titulo=${datos.tipo === 'transferencia'
         ? (picker === 'cuenta' ? '¿Desde qué cuenta?' : '¿Hacia qué cuenta?')
         : '¿Con qué cuenta?'}
-      cuentas=${S.cuentas} txs=${txs}
+      cuentas=${S.cuentas} txs=${txs} tasas=${S.tasas}
       excluir=${picker === 'cuenta' ? null : datos.cuenta}
       onPick=${c => {
         const p = picker === 'cuenta' ? { cuenta: c.id } : { destino: c.id };

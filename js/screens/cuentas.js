@@ -45,7 +45,7 @@ export default function Cuentas() {
           <div class="sub">${[c.banco, c.numero && '№ ' + c.numero].filter(Boolean).join(' · ') || TIPOS_CUENTA[c.tipo].nombre}</div>
         </div>
         <div style=${{ textAlign: 'right' }}>
-          <div class="monto num" style=${{ color: saldoCuenta(c, txs) < 0 ? 'var(--gasto)' : 'inherit' }}>${fmtConMoneda(saldoCuenta(c, txs), c.moneda)}</div>
+          <div class="monto num" style=${{ color: saldoCuenta(c, txs, S.tasas) < 0 ? 'var(--gasto)' : 'inherit' }}>${fmtConMoneda(saldoCuenta(c, txs, S.tasas), c.moneda)}</div>
           ${c.moneda !== principal && html`<div class="sub num">≈ ${fmtConMoneda(saldoConvertido(c, txs, S.tasas, principal), principal)}</div>`}
         </div>
       </div>`)}
@@ -100,8 +100,8 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
       <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style=${{ fontSize: '12px', color: 'var(--muted)', fontWeight: 700 }}>${TIPOS_CUENTA[cuenta.tipo].nombre} · ${cuenta.moneda}</div>
-          <div class="num" style=${{ fontSize: '26px', fontWeight: 800, color: saldoCuenta(cuenta, txs) < 0 ? 'var(--gasto)' : 'inherit' }}>
-            ${fmtConMoneda(saldoCuenta(cuenta, txs), cuenta.moneda)}
+          <div class="num" style=${{ fontSize: '26px', fontWeight: 800, color: saldoCuenta(cuenta, txs, S.tasas) < 0 ? 'var(--gasto)' : 'inherit' }}>
+            ${fmtConMoneda(saldoCuenta(cuenta, txs, S.tasas), cuenta.moneda)}
           </div>
         </div>
         ${cuenta.moneda !== principal && html`<div class="sub num">≈ ${fmtConMoneda(saldoConvertido(cuenta, txs, S.tasas, principal), principal)}</div>`}

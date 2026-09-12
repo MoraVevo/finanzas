@@ -15,10 +15,17 @@ export const TIPOS_CUENTA = {
 /**
  * Efecto de una transacción sobre una cuenta, en la moneda de esa cuenta.
  * Gasto: -monto · Ingreso: +monto · Transferencia: origen -monto, destino +montoDestino.
+ * Si la transacción está en otra moneda que la cuenta, convierte con las tasas
+ * vigentes a la fecha del movimiento.
  */
-export function efectoTx(tx, cuentaId) {
+export function efectoTx(tx, cuentaId, tasas = [], monedaCuenta = null) {
+  const enMonedaCuenta = monto => {
+    if (!monedaCuenta || tx.moneda === monedaCuenta) return monto;
+    return convertir(monto, tx.moneda, monedaCuenta, tasas, tx.fecha);
+  };
   if (tx.cuenta === cuentaId) {
-    return tx.tipo === 'gasto' ? -tx.monto : tx.tipo === 'ingreso' ? tx.monto : -tx.monto;
+    const m = enMonedaCuenta(tx.monto);
+    return tx.tipo === 'gasto' ? -m : tx.tipo === 'ingreso' ? m : -m;
   }
   if (tx.tipo === 'transferencia' && tx.cuentaDestino === cuentaId) {
     return tx.montoDestino ?? tx.monto;
@@ -26,10 +33,10 @@ export function efectoTx(tx, cuentaId) {
   return 0;
 }
 
-/** Saldo actual de una cuenta (incluye saldo inicial). */
-export function saldoCuenta(cuenta, txs) {
+/** Saldo actual de una cuenta en su propia moneda (incluye saldo inicial). */
+export function saldoCuenta(cuenta, txs, tasas = []) {
   let s = cuenta.saldoInicial || 0;
-  for (const tx of txs) s += efectoTx(tx, cuenta.id);
+  for (const tx of txs) s += efectoTx(tx, cuenta.id, tasas, cuenta.moneda);
   return s;
 }
 
@@ -52,7 +59,7 @@ export function convertir(entero, desde, hacia, tasas, fechaISO = '9999') {
 
 /** Saldo convertido a la moneda principal. */
 export const saldoConvertido = (cuenta, txs, tasas, principal) =>
-  convertir(saldoCuenta(cuenta, txs), cuenta.moneda, principal, tasas);
+  convertir(saldoCuenta(cuenta, txs, tasas), cuenta.moneda, principal, tasas);
 
 /** Patrimonio (todas las cuentas), total de deudas (tarjetas + deudas, saldos negativos). */
 export function patrimonio(cuentas, txs, tasas, principal) {
@@ -65,8 +72,11 @@ export function patrimonio(cuentas, txs, tasas, principal) {
   return { total, deudas, disponible: total + deudas }; // disponible = activos sin contar deudas
 }
 
-/** Estadísticas de un mes. Las transferencias quedan fuera de gasto/ingreso. */
-export function statsMes(clave, txs, { categorias, tasas, principal }) {
+/** Estadísticas de un mes. Las transferencias quedan fuera de gasto/ingreso.
+ *  Acepta el store completo (S): la moneda principal se toma de ajustes si no
+ *  viene explícita. */
+export function statsMes(clave, txs, { categorias, tasas, ajustes, principal }) {
+  principal = principal || ajustes?.monedaPrincipal || 'GTQ';
   const catPorId = new Map(categorias.map(c => [c.id, c]));
   const porCategoria = new Map(), porCategoriaIngreso = new Map(), porEtiqueta = new Map(), porDia = new Map();
   let gasto = 0, ingreso = 0, transferencias = 0;
@@ -100,7 +110,8 @@ export function statsMes(clave, txs, { categorias, tasas, principal }) {
 }
 
 /** Gasto e ingreso de los últimos N meses (inclusive el actual). */
-export function tendencia(txs, { tasas, principal }, n = 12) {
+export function tendencia(txs, { tasas, ajustes, principal }, n = 12) {
+  principal = principal || ajustes?.monedaPrincipal || 'GTQ';
   const actual = claveMes(new Date().toISOString());
   const meses = [];
   for (let i = n - 1; i >= 0; i--) meses.push(sumarMesClave(actual, -i));

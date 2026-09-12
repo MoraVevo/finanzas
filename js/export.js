@@ -125,7 +125,7 @@ export async function copiarParaIA({ meses = 3, tasas, principal, cuentas, categ
         deudas: fmtConMoneda(-p.deudas, principal),
         cuentas: cuentas.filter(c => !c.archivada).map(c => ({
           nombre: c.nombre, tipo: c.tipo, moneda: c.moneda,
-          saldo: fmtMonto(saldoCuenta(c, todasTx), monedaInfo(c.moneda).dec)
+          saldo: fmtMonto(saldoCuenta(c, todasTx, tasas), monedaInfo(c.moneda).dec)
         }))
       };
     })(),

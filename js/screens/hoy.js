@@ -61,7 +61,7 @@ export default function Hoy() {
           <button key=${c.id} class="chip" onClick=${() => nav('#/cuentas')}>
             ${TIPOS_CUENTA[c.tipo].emoji} ${c.nombre}
             <span class="num" style=${{ color: saldoConvertido(c, txs, S.tasas, principal) < 0 ? 'var(--gasto)' : 'inherit' }}>
-              ${fmtConMoneda(saldoCuenta(c, txs), c.moneda)}
+              ${fmtConMoneda(saldoCuenta(c, txs, S.tasas), c.moneda)}
             </span>
           </button>`)}
       </div>

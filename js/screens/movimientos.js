@@ -116,7 +116,7 @@ export default function Movimientos() {
       </div>`)}
     <//>`}
 
-    ${sheet === 'cuenta' && html`<${PickerCuentas} titulo="Filtrar por cuenta" cuentas=${S.cuentas} txs=${[]}
+    ${sheet === 'cuenta' && html`<${PickerCuentas} titulo="Filtrar por cuenta" cuentas=${S.cuentas} txs=${[]} tasas=${S.tasas}
       onPick=${c => { setFiltro({ ...filtro, cuenta: filtro.cuenta === c.id ? null : c.id }); setSheet(null); }}
       onClose=${() => setSheet(null)} />`}
 
