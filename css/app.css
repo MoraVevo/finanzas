@@ -258,10 +258,10 @@ input[type="datetime-local"], input[type="date"] { min-height: 42px; }
 .barra-fila .pista { height: 8px; border-radius: 5px; background: var(--chip); overflow: hidden; }
 .barra-fila .lleno { height: 100%; border-radius: 5px; background: var(--accent); }
 
-/* Gráfica de flujo interactiva: arrastre, pellizco, lectura */
-.flujo-chart { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+/* Gráfica de flujo interactiva: 1 dedo desplaza (vertical = scroll de página), pellizco = zoom */
+.flujo-chart { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: grab; }
 .flujo-chart:active { cursor: grabbing; }
-.flujo-chart svg { display: block; width: 100%; height: 175px; }
+.flujo-chart svg { display: block; width: 100%; height: 250px; }
 .flujo-zoom { position: absolute; top: 2px; left: 2px; display: flex; gap: 4px; }
 .flujo-zoom button {
   width: 27px; height: 27px; border-radius: 9px; background: var(--chip);

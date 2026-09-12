@@ -5,7 +5,7 @@
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
-import { statsMes, tendencia, patrimonio, saldoConvertido, flujoEfectivo, fechasRepetir, convertir, TIPOS_CUENTA } from '../model.js';
+import { statsMes, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, TIPOS_CUENTA } from '../model.js';
 import { Sheet, PickerCuentas } from '../ui.js';
 import { fmtConMoneda, fmtMonto, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
@@ -198,7 +198,7 @@ function VistaFlujo({ S, todo }) {
     </div>
 
     <div class="tarjeta">
-      <h3>Arrastra, pellizca o usa ± para explorar</h3>
+      <h3>${nombreScope ? `${nombreScope} en el tiempo` : 'Tu patrimonio en el tiempo'}</h3>
       <${ChartFlujo} fl=${fl} principal=${principal} />
       <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
         <span>▬ Real</span><span>┄ Registrado por ti</span>
@@ -269,6 +269,35 @@ function EditorFuturo({ f, S, cerrar }) {
   const cuentaObj = S.cuentas.find(c => c.id === d.cuenta);
   const destinoObj = S.cuentas.find(c => c.id === d.cuentaDestino);
 
+  /** Disponible proyectado en una cuenta (o patrimonio) en la fecha dada,
+   *  contando los demás movimientos futuros ya registrados. */
+  const disponibleProyectado = async (cuentaId, fecha, excluirId) => {
+    const todas = await fin.todasTx();
+    const hoyD = isoDia();
+    const principalMoneda = S.ajustes.monedaPrincipal;
+    if (!cuentaId) {
+      let proy = patrimonio(S.cuentas, todas, S.tasas, principalMoneda).total;
+      for (const fu of S.futuros) {
+        if (fu.id === excluirId || fu.fecha > fecha) continue;
+        if (fu.tipo === 'ingreso') proy += convertir(fu.monto, fu.moneda, principalMoneda, S.tasas, hoyD);
+        else if (fu.tipo === 'gasto') proy -= convertir(fu.monto, fu.moneda, principalMoneda, S.tasas, hoyD);
+      }
+      return { proy, moneda: principalMoneda };
+    }
+    const cuenta = S.cuentas.find(c => c.id === cuentaId);
+    let proy = saldoCuenta(cuenta, todas, S.tasas);
+    for (const fu of S.futuros) {
+      if (fu.id === excluirId || fu.fecha > fecha) continue;
+      if (fu.tipo === 'gasto' && fu.cuenta === cuentaId) proy -= convertir(fu.monto, fu.moneda, cuenta.moneda, S.tasas, hoyD);
+      else if (fu.tipo === 'ingreso' && fu.cuenta === cuentaId) proy += convertir(fu.monto, fu.moneda, cuenta.moneda, S.tasas, hoyD);
+      else if (fu.tipo === 'transferencia') {
+        if (fu.cuenta === cuentaId) proy -= convertir(fu.monto, fu.moneda, cuenta.moneda, S.tasas, hoyD);
+        else if (fu.cuentaDestino === cuentaId) proy += convertir(fu.montoDestino ?? fu.monto, fu.monedaDestino || fu.moneda, cuenta.moneda, S.tasas, hoyD);
+      }
+    }
+    return { proy, moneda: cuenta.moneda };
+  };
+
   const guardar = async () => {
     const monto = textoAEntero(d.monto || '0', 2);
     if (!monto) { toast('Escribe el monto'); return; }
@@ -276,6 +305,16 @@ function EditorFuturo({ f, S, cerrar }) {
     if (d.fecha <= isoDia()) { toast('La fecha debe ser futura: lo que ya pasó se registra con ＋ o con "Ya ocurrió"'); return; }
     if (d.tipo === 'transferencia') {
       if (!cuentaObj || !destinoObj || cuentaObj.id === destinoObj.id) { toast('Elige las dos cuentas (distintas)'); return; }
+    }
+    // validez: gastos y transferencias deben poder pagarse con lo proyectado
+    if (d.tipo !== 'ingreso') {
+      const alcance = d.tipo === 'transferencia' ? cuentaObj?.id : (d.cuenta || null);
+      const { proy, moneda } = await disponibleProyectado(alcance, d.fecha, f.id);
+      const montoAlcance = convertir(monto, d.moneda, moneda, S.tasas, isoDia());
+      if (montoAlcance > proy) {
+        alert(`No se puede guardar: ${d.tipo === 'transferencia' ? 'la cuenta de origen' : (d.cuenta ? 'esa cuenta' : 'tu patrimonio')} proyecta solo ${fmtConMoneda(proy, moneda)} disponibles el ${fmtFechaCorta(d.fecha)}, contando tus otros movimientos futuros.\n\nAjusta el monto o la fecha, o registra primero los ingresos que lo cubren.`);
+        return;
+      }
     }
     const fechas = f.id ? [d.fecha] : fechasRepetir(d.fecha, d.repetir, d.repetir === 'unica' ? 1 : 6);
     const distinta = d.tipo === 'transferencia' && destinoObj && cuentaObj && destinoObj.moneda !== cuentaObj.moneda;
@@ -345,7 +384,7 @@ function EditorFuturo({ f, S, cerrar }) {
       ${!f.id && html`<div>
         <div class="dato-cuenta">Repetir (crea 6 fechas que puedes editar por separado)</div>
         <div class="chips-scroll" style=${{ marginTop: '6px' }}>
-          ${[['unica', 'Solo esta vez'], ['mensual', 'Cada mes'], ['quincenal', 'Quincenal (15 y fin de mes)']].map(([v, t]) => html`
+          ${[['unica', 'Solo esta vez'], ['semanal', 'Semanal'], ['mensual', 'Cada mes'], ['quincenal', 'Quincenal (15 y fin de mes)']].map(([v, t]) => html`
             <button key=${v} class=${'chip' + (d.repetir === v ? ' sel' : '')} onClick=${() => set({ repetir: v })}>${t}</button>`)}
         <//>
       <//>`}
@@ -355,29 +394,48 @@ function EditorFuturo({ f, S, cerrar }) {
 
     ${picker && html`<${PickerCuentas}
       titulo=${d.tipo === 'transferencia' ? (picker === 'cuenta' ? '¿Desde qué cuenta?' : '¿Hacia qué cuenta?') : '¿Con qué cuenta?'}
-      cuentas=${S.cuentas} txs=${[]} tasas=${S.tasas}
+      cuentas=${S.cuentas} txs=${[]} tasas=${S.tasas} sinSaldo
       excluir=${d.tipo === 'transferencia' && picker === 'destino' ? d.cuenta : null}
       onPick=${c => { setPicker(null); set(picker === 'destino' ? { cuentaDestino: c.id } : { cuenta: c.id }); }}
       onClose=${() => setPicker(null)} />`}
   </div>`;
 }
 
-/* ---------- Gráfica de flujo interactiva ---------- */
+/* ---------- Gráfica de flujo interactiva ----------
+   Un dedo = desplazarse SIEMPRE; pellizco (dos dedos) o botones = zoom.
+   Ventana por defecto: 1 mes alrededor de hoy. Eje X legible: días ("10 sep")
+   con zoom, meses ("sep", "sep 26" en ventanas largas). */
 function ChartFlujo({ fl, principal }) {
-  const W = 320, H = 175, PL = 6, PR = 6, PT = 14, PB = 18;
+  const W = 320, H = 250, PL = 8, PR = 8, PT = 18, PB = 22;
+  const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   const wrap = useRef(null);
   const punteros = useRef(new Map());
-  const [ventana, setVentana] = useState(null); // {ini, fin} ISO; null = todo
-  const [lectura, setLectura] = useState(null); // {fecha, balance}
-
-  useEffect(() => { setVentana(null); setLectura(null); }, [fl.desdeD, fl.hastaD]);
+  const modo = useRef(null); // 'pan' | 'pinch' — fijo hasta soltar todos los dedos
+  const [ventana, setVentana] = useState(null); // null = mes actual
+  const [lectura, setLectura] = useState(null);
 
   const tMs = iso => +new Date(iso + 'T12:00');
-  const ini = ventana ? ventana.ini : fl.desdeD;
-  const fin = ventana ? ventana.fin : fl.hastaD;
+  const tDesde = tMs(fl.desdeD), tHasta = tMs(fl.hastaD), tHoy = tMs(fl.hoyD);
+  const DIA = 86400000;
+  const clampVentana = (nIniMs, nFinMs) => {
+    const MIN_DIAS = 14;
+    let a = Math.max(tDesde, nIniMs), b = Math.min(tHasta, nFinMs);
+    if ((b - a) / DIA < MIN_DIAS) {
+      const c = (a + b) / 2;
+      a = Math.max(tDesde, c - MIN_DIAS * DIA / 2); b = Math.min(tHasta, c + MIN_DIAS * DIA / 2);
+    }
+    const iso = t => { const dd = new Date(t); return `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`; };
+    return { ini: iso(a), fin: iso(b) };
+  };
+  const porDefecto = clampVentana(tHoy - 15 * DIA, tHoy + 15 * DIA);
+
+  useEffect(() => { setVentana(null); setLectura(null); }, [fl.desdeD, fl.hastaD, fl.hoyD]);
+
+  const ini = ventana ? ventana.ini : porDefecto.ini;
+  const fin = ventana ? ventana.fin : porDefecto.fin;
   const tIni = tMs(ini), tFin = tMs(fin);
-  const diasVentana = Math.max(1, Math.round((tFin - tIni) / 86400000));
-  const paso = Math.max(1, Math.round(diasVentana / 120));
+  const diasVentana = Math.max(1, Math.round((tFin - tIni) / DIA));
+  const paso = Math.max(1, Math.round(diasVentana / 130));
 
   // series visibles: pasado real (≤ hoy) con muestreo adaptativo + futuro exacto
   const visPas = [];
@@ -397,22 +455,8 @@ function ChartFlujo({ fl, principal }) {
   const Y = v => PT + (1 - (v - lo) / (hi - lo)) * (H - PT - PB);
   const linea = pts => pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.fecha).toFixed(1)},${Y(p.balance).toFixed(1)}`).join(' ');
   const xHoy = X(fl.hoyD);
-
   const compacto = v => Math.abs(v) >= 100000 ? (v / 100000).toFixed(1) + 'k' : fmtMonto(Math.round(v / 100) * 100, 0);
 
-  // ---- gestos ----
-  const clampVentana = (nIniMs, nFinMs) => {
-    const MIN_DIAS = 21;
-    const tDesde = tMs(fl.desdeD), tHasta = tMs(fl.hastaD);
-    let a = Math.max(tDesde, nIniMs), b = Math.min(tHasta, nFinMs);
-    if ((b - a) / 86400000 < MIN_DIAS) {
-      const c = (a + b) / 2;
-      a = c - MIN_DIAS * 43200000; b = c + MIN_DIAS * 43200000;
-      a = Math.max(tDesde, a); b = Math.min(tHasta, b);
-    }
-    const iso = t => { const dd = new Date(t); return `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`; };
-    return { ini: iso(a), fin: iso(b) };
-  };
   const zoom = factor => {
     const c = (tIni + tFin) / 2, span = (tFin - tIni) * factor;
     setVentana(clampVentana(c - span / 2, c + span / 2));
@@ -431,14 +475,16 @@ function ChartFlujo({ fl, principal }) {
   const actualizarLectura = e => {
     const r = wrap.current.getBoundingClientRect();
     const frac = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-    const fecha = new Date(tIni + frac * (tFin - tIni));
-    const iso = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`;
+    const t = tIni + frac * (tFin - tIni);
+    const dd = new Date(t);
+    const iso = `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, '0')}-${String(dd.getDate()).padStart(2, '0')}`;
     setLectura({ fecha: iso, balance: balanceEn(iso) });
   };
 
   const bajar = e => {
-    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* puntero no capturable: el gesto igual funciona */ }
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* sin captura: el gesto igual funciona */ }
     punteros.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    modo.current = punteros.current.size >= 2 ? 'pinch' : 'pan';
     actualizarLectura(e);
   };
   const moverGesto = e => {
@@ -446,43 +492,48 @@ function ChartFlujo({ fl, principal }) {
     if (!prev) { actualizarLectura(e); return; }
     const ps = punteros.current;
     const ancho = wrap.current.getBoundingClientRect().width || 1;
-    if (ps.size === 1) {
-      const dDias = (prev.x - e.clientX) / ancho * diasVentana; // arrastrar a la derecha → ver el pasado
-      setVentana(clampVentana(tIni - dDias * 86400000, tFin - dDias * 86400000));
-    } else if (ps.size === 2) {
+    if (modo.current === 'pinch' && ps.size >= 2) {
       const ids = [...ps.keys()];
-      const otroId = ids.find(k => k !== e.pointerId);
-      const otro = ps.get(otroId);
+      const otro = ps.get(ids.find(k => k !== e.pointerId));
       const distPrev = Math.hypot(prev.x - otro.x, prev.y - otro.y) || 1;
       const distNow = Math.hypot(e.clientX - otro.x, e.clientY - otro.y) || 1;
-      const razon = distNow / distPrev;
       const rect = wrap.current.getBoundingClientRect();
       const midFrac = Math.min(1, Math.max(0, ((e.clientX + otro.x) / 2 - rect.left) / rect.width));
-      const spanNuevo = (tFin - tIni) / Math.max(0.1, razon);
+      const spanNuevo = (tFin - tIni) / Math.max(0.1, distNow / distPrev);
       const anchor = tIni + midFrac * (tFin - tIni);
       setVentana(clampVentana(anchor - midFrac * spanNuevo, anchor - midFrac * spanNuevo + spanNuevo));
+    } else {
+      // un dedo: desplazar SIEMPRE (nunca zoom)
+      const dDias = (prev.x - e.clientX) / ancho * diasVentana;
+      setVentana(clampVentana(tIni - dDias * DIA, tFin - dDias * DIA));
     }
     ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
     actualizarLectura(e);
   };
   const subir = e => {
     punteros.current.delete(e.pointerId);
+    if (punteros.current.size === 0) modo.current = null;
+    else if (punteros.current.size === 1) modo.current = 'pan';
   };
 
-  // marcas del eje X: meses si es largo, días si hay zoom
+  // marcas del eje X legibles: días al acercar, meses completos (con año si toca)
   const marcas = [];
-  if (diasVentana > 70) {
-    const cur = new Date(ini + 'T12:00');
-    cur.setDate(1);
+  const anyoCruzado = new Date(ini + 'T12:00').getFullYear() !== new Date(fin + 'T12:00').getFullYear();
+  if (diasVentana > 75) {
+    const cur = new Date(ini + 'T12:00'); cur.setDate(1);
+    let n = 0;
     for (; tMs(isoD2(cur)) <= tFin; cur.setMonth(cur.getMonth() + 1)) {
       const iso = isoD2(cur);
-      if (tMs(iso) >= tIni) marcas.push({ x: X(iso), nom: ['e', 'f', 'm', 'a', 'm', 'j', 'j', 'a', 's', 'o', 'n', 'd'][cur.getMonth()] });
+      if (tMs(iso) < tIni) continue;
+      const conAnyo = anyoCruzado || diasVentana > 400;
+      if (conAnyo && n++ % 2 === 1) continue;
+      marcas.push({ x: X(iso), nom: MESES3[cur.getMonth()] + (conAnyo ? ' ' + String(cur.getFullYear()).slice(2) : '') });
     }
   } else {
-    const pasoMarca = Math.max(1, Math.round(diasVentana / 8));
+    const pasoMarca = Math.max(1, Math.round(diasVentana / 7));
     const cur = new Date(ini + 'T12:00');
     for (; tMs(isoD2(cur)) <= tFin; cur.setDate(cur.getDate() + pasoMarca)) {
-      marcas.push({ x: X(isoD2(cur)), nom: `${cur.getDate()}/${['e', 'f', 'm', 'a', 'm', 'j', 'j', 'a', 's', 'o', 'n', 'd'][cur.getMonth()]}` });
+      marcas.push({ x: X(isoD2(cur)), nom: `${cur.getDate()} ${MESES3[cur.getMonth()]}` });
     }
   }
 
@@ -490,29 +541,30 @@ function ChartFlujo({ fl, principal }) {
     onPointerDown=${bajar} onPointerMove=${moverGesto} onPointerUp=${subir} onPointerCancel=${subir} onPointerLeave=${subir}>
     <svg viewBox=${`0 0 ${W} ${H}`}>
       ${hi > 0 && html`<line x1=${PL} x2=${W - PR} y1=${Y(0)} y2=${Y(0)} stroke="var(--line)" stroke-width="1" />`}
-      ${ini <= fl.hoyD && html`<line x1=${xHoy} x2=${xHoy} y1=${PT} y2=${H - PB} stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 3" />`}
-      ${ini <= fl.hoyD && html`<text x=${xHoy + 3} y=${PT + 2} fontSize="8.5" fill="var(--muted)">hoy</text>`}
-      ${marcas.map((m, i) => html`<text key=${i} x=${m.x} y=${H - 5} fontSize="8.5" textAnchor="middle" fill="var(--muted)">${m.nom}</text>`)}
+      ${ini <= fl.hoyD && fin >= fl.hoyD && html`<line x1=${xHoy} x2=${xHoy} y1=${PT} y2=${H - PB} stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 3" />`}
+      ${ini <= fl.hoyD && fin >= fl.hoyD && html`<text x=${xHoy + 3} y=${PT - 6} fontSize="9" fill="var(--muted)">hoy</text>`}
+      ${marcas.map((m, i) => html`<text key=${i} x=${m.x} y=${H - 6} fontSize="9" textAnchor="middle" fill="var(--muted)">${m.nom}</text>`)}
       ${visPas.length > 1 && html`<path d=${linea(visPas)} fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round" />`}
       ${visFut.length > 0 && html`<path d=${linea(visFut)} fill="none" stroke="var(--transfer)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" />`}
-      ${visFut.slice(1).map((p, i) => html`<circle key=${i} cx=${X(p.fecha)} cy=${Y(p.balance)} r="2.6" fill="var(--transfer)">
+      ${visFut.slice(1).map((p, i) => html`<circle key=${i} cx=${X(p.fecha)} cy=${Y(p.balance)} r="2.8" fill="var(--transfer)">
         <title>${p.fecha}: ${fmtConMoneda(p.balance, principal)}</title>
       <//>`)}
-      ${visPas.length > 0 && html`<circle cx=${X(visPas.at(-1).fecha)} cy=${Y(visPas.at(-1).balance)} r="3.4" fill="var(--accent)">
+      ${visPas.length > 0 && html`<circle cx=${X(visPas.at(-1).fecha)} cy=${Y(visPas.at(-1).balance)} r="3.6" fill="var(--accent)">
         <title>${visPas.at(-1).fecha}: ${fmtConMoneda(visPas.at(-1).balance, principal)}</title>
       <//>`}
-      <text x=${PL} y=${PT - 3} fontSize="8.5" fill="var(--muted)">${compacto(hi)}</text>
+      <text x=${PL} y=${PT - 6} fontSize="9" fill="var(--muted)">${compacto(hi)}</text>
     </svg>
     <div class="flujo-zoom">
       <button onClick=${e => { e.stopPropagation(); zoom(0.6); }} aria-label="Acercar">＋</button>
       <button onClick=${e => { e.stopPropagation(); zoom(1 / 0.6); }} aria-label="Alejar">−</button>
-      <button onClick=${e => { e.stopPropagation(); setVentana(null); }} aria-label="Ver todo">↺</button>
+      <button onClick=${e => { e.stopPropagation(); setVentana(null); }} aria-label="Mes actual">↺</button>
     </div>
     ${lectura && html`<div class="flujo-lectura num">
       ${fmtFechaCorta(lectura.fecha)} · ${fmtConMoneda(lectura.balance, principal)}
     <//>`}
   </div>`;
 }
+
 const isoD2 = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const fmtFechaCorta = f => {

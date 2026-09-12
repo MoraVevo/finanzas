@@ -104,7 +104,7 @@ export function FilaTx({ tx, cuentas, categorias, onClick }) {
 }
 
 /* ---------- Selector de cuentas (sheet con datos de la cuenta) ---------- */
-export function PickerCuentas({ titulo = 'Elegir cuenta', cuentas, txs, tasas = [], onPick, onClose, excluir }) {
+export function PickerCuentas({ titulo = 'Elegir cuenta', cuentas, txs, tasas = [], onPick, onClose, excluir, sinSaldo = false }) {
   const [q, setQ] = useState('');
   const lista = cuentas
     .filter(c => !c.archivada && c.id !== excluir)
@@ -119,7 +119,7 @@ export function PickerCuentas({ titulo = 'Elegir cuenta', cuentas, txs, tasas = 
           <div class="titulo">${c.nombre}</div>
           <div class="sub">${[c.banco, c.numero, c.moneda].filter(Boolean).join(' · ')}</div>
         </div>
-        <div class="monto num ${saldoCuenta(c, txs, tasas) < 0 ? 'm-gasto' : ''}">${fmtConMoneda(saldoCuenta(c, txs, tasas), c.moneda)}</div>
+        <div class=${sinSaldo ? 'monto' : 'monto num ' + (saldoCuenta(c, txs, tasas) < 0 ? 'm-gasto' : '')}>${sinSaldo ? '' : fmtConMoneda(saldoCuenta(c, txs, tasas), c.moneda)}</div>
       </div>`)}
       ${lista.length === 0 && html`<div class="vacio">Sin resultados. Crea cuentas en la pestaña Cuentas.</div>`}
     </div>

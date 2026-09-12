@@ -177,6 +177,10 @@ export function fechasRepetir(fechaBase, frecuencia, n = 6) {
   const base = new Date(fechaBase + 'T12:00');
   const { y, m, d } = { y: base.getFullYear(), m: base.getMonth(), d: base.getDate() };
   const fuera = [];
+  if (frecuencia === 'semanal') {
+    for (let i = 0; i < n; i++) { fuera.push(isoDia(base)); base.setDate(base.getDate() + 7); }
+    return fuera;
+  }
   if (frecuencia === 'quincenal') {
     // alterna: si el día base es > 15, parte del fin de mes y salta al 15 siguiente
     let primeraQuincena = d <= 15;
