@@ -307,14 +307,17 @@ function EditorFuturo({ f, S, cerrar }) {
     if (d.tipo === 'transferencia') {
       if (!cuentaObj || !destinoObj || cuentaObj.id === destinoObj.id) { toast('Elige las dos cuentas (distintas)'); return; }
     }
-    // validez: gastos y transferencias deben poder pagarse con lo proyectado
+    // validez: solo la FUENTE (cuenta de origen) limita el pago. El patrimonio
+    // puede estar negativo por deudas — eso se abona a futuro y no impide nada.
     if (d.tipo !== 'ingreso') {
-      const alcance = d.tipo === 'transferencia' ? cuentaObj?.id : (d.cuenta || null);
-      const { proy, moneda } = await disponibleProyectado(alcance, d.fecha, f.id);
-      const montoAlcance = convertir(monto, d.moneda, moneda, S.tasas, isoDia());
-      if (montoAlcance > proy) {
-        alert(`No se puede guardar: ${d.tipo === 'transferencia' ? 'la cuenta de origen' : (d.cuenta ? 'esa cuenta' : 'tu patrimonio')} proyecta solo ${fmtConMoneda(proy, moneda)} disponibles el ${fmtFechaCorta(d.fecha)}, contando tus otros movimientos futuros.\n\nAjusta el monto o la fecha, o registra primero los ingresos que lo cubren.`);
-        return;
+      const alcance = d.tipo === 'transferencia' ? cuentaObj?.id : d.cuenta || null;
+      if (alcance) {
+        const { proy, moneda } = await disponibleProyectado(alcance, d.fecha, f.id);
+        const montoAlcance = convertir(monto, d.moneda, moneda, S.tasas, isoDia());
+        if (montoAlcance > proy) {
+          alert(`No se puede guardar: la cuenta proyecta solo ${fmtConMoneda(proy, moneda)} disponibles el ${fmtFechaCorta(d.fecha)}, contando tus otros movimientos futuros.\n\nAjusta el monto o la fecha, o registra primero los ingresos que la cubren.`);
+          return;
+        }
       }
     }
     const fechas = f.id ? [d.fecha] : fechasRepetir(d.fecha, d.repetir, d.repetir === 'unica' ? 1 : 6);
@@ -546,11 +549,11 @@ function ChartFlujo({ fl, principal }) {
     <svg viewBox=${`0 0 ${W} ${H}`}>
       ${ticksY.map((v, i) => html`<g key=${'y' + i}>
         <line x1=${PL} x2=${W - PR} y1=${Y(v)} y2=${Y(v)} stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4" opacity=".7" />
-        <text x=${PL + 2} y=${Y(v) - 3} fontSize="8.5" fill="var(--muted)">${compacto(v)}</text>
+        <text x=${PL + 2} y=${Y(v) - 3} fontSize="7" fill="var(--muted)">${compacto(v)}</text>
       </g>`)}
       ${hi > 0 && html`<line x1=${PL} x2=${W - PR} y1=${Y(0)} y2=${Y(0)} stroke="var(--line)" stroke-width="1" />`}
       ${ini <= fl.hoyD && fin >= fl.hoyD && html`<line x1=${xHoy} x2=${xHoy} y1=${PT} y2=${H - PB} stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 3" />`}
-      ${ini <= fl.hoyD && fin >= fl.hoyD && html`<text x=${xHoy + 3} y=${PT - 6} fontSize="9" fill="var(--muted)">hoy</text>`}
+      ${ini <= fl.hoyD && fin >= fl.hoyD && html`<text x=${xHoy + 3} y=${PT - 6} fontSize="7" fill="var(--muted)">hoy</text>`}
       ${marcas.map((m, i) => html`<text key=${i} x=${m.x} y=${H - 6} fontSize="9" textAnchor="middle" fill="var(--muted)">${m.nom}</text>`)}
       ${visPas.length > 1 && html`<path d=${linea(visPas)} fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round" />`}
       ${visFut.length > 0 && html`<path d=${linea(visFut)} fill="none" stroke="var(--transfer)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" />`}
@@ -596,8 +599,8 @@ function ChartDias({ porDia, diasMes, max, principal }) {
         <title>Día ${i + 1}: ${fmtConMoneda(v, principal)}</title>
       </rect>`;
     })}
-    <text x="0" y=${H - 1} fontSize="9" fill="var(--muted)">1</text>
-    <text x=${W - 14} y=${H - 1} fontSize="9" fill="var(--muted)">${diasMes}</text>
+    <text x="0" y=${H - 1} fontSize="7" fill="var(--muted)">1</text>
+    <text x=${W - 14} y=${H - 1} fontSize="7" fill="var(--muted)">${diasMes}</text>
   </svg>`;
 }
 
