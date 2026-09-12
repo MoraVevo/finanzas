@@ -2,7 +2,7 @@
 // monedas y estadísticas. Sin dependencias de la UI: reutilizable en cualquier
 // contexto (futuro sync, app nativa, scripts de análisis, etc.).
 
-import { monedaInfo, claveMes, sumarMesClave, isoDia } from './util.js';
+import { monedaInfo, claveMes, sumarMesClave, isoDia, rangoMes } from './util.js';
 
 export const TIPOS_CUENTA = {
   efectivo: { emoji: '💵', nombre: 'Efectivo' },
@@ -366,4 +366,28 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], d
     return { ...e, balanceDespues: saldo, ok: saldo >= 0, faltante: saldo < 0 ? -saldo : 0 };
   });
   return { base, rows, hastaD: finD };
+}
+
+/** Estructura del mes: clasifica transacciones reales en fijos y variables.
+ *  Una transacción cuenta como fija si coincide con alguna regla activa
+ *  (mismo tipo y monto equivalente dentro de ±1%). */
+export function estructuraMes(clave, txs, S) {
+  const principal = S.ajustes.monedaPrincipal;
+  const tasas = S.tasas || [];
+  const [desde, hasta] = rangoMes(clave);
+  const reglas = (S.fijos || []).filter(f => f.activa !== false);
+  const montoDe = (monto, moneda, fecha) => convertir(monto, moneda, principal, tasas, fecha);
+  let fijoIn = 0, varIn = 0, fijoOut = 0, varOut = 0;
+  const tol = p => Math.max(100, Math.round(p * 0.01));
+  const esFijo = tx => {
+    const mp = montoDe(tx.monto, tx.moneda, tx.fecha);
+    return reglas.some(r => r.tipo === tx.tipo &&
+      Math.abs(montoDe(r.monto, r.moneda, tx.fecha) - mp) <= tol(montoDe(r.monto, r.moneda, tx.fecha)));
+  };
+  for (const tx of txs.filter(t => t.fecha >= desde && t.fecha < hasta && t.tipo !== 'transferencia' && !t.eliminada)) {
+    const mp = montoDe(tx.monto, tx.moneda, tx.fecha);
+    if (tx.tipo === 'ingreso') { if (esFijo(tx)) fijoIn += mp; else varIn += mp; }
+    else { if (esFijo(tx)) fijoOut += mp; else varOut += mp; }
+  }
+  return { fijoIn, varIn, fijoOut, varOut, tieneReglas: reglas.length > 0 };
 }
