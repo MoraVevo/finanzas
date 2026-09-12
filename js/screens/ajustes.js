@@ -7,7 +7,7 @@ import { Sheet, SelectorMoneda, EmojiPicker } from '../ui.js';
 import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.js';
 import { exportarCSV, exportarJSON, importarJSON, copiarParaIA } from '../export.js';
 
-const VERSION = '1.16';
+const VERSION = '1.17';
 
 export default function Ajustes() {
   const S = useStore();

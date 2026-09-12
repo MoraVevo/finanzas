@@ -103,20 +103,21 @@ export default function Hoy() {
       <div class="dato-cuenta" style=${{ marginBottom: '6px' }}>
         Teórico · hoy: <b class="num">${fmtConMoneda(pa.base, principal)}</b> disponibles${fijosActivos.length ? '' : ' — configura tus ingresos y gastos fijos'}
       </div>
-      ${pa.rows.map(r => html`<div key=${r.fecha + r.fijoId + r.nombre} class="fila">
-        <span class="emoji">${r.tipo === 'ingreso' ? '💰' : '🔻'}</span>
+      ${pa.rows.map(r => html`<div key=${r.fecha + r.fijoId + r.nombre} class=${'fila fila-pago ' + (r.ok ? 'fila-pago-ok' : 'fila-pago-falta')}>
         <div class="cuerpo">
           <div class="titulo">${r.nombre}</div>
-          <div class="sub">${fmtFecha(r.fecha)} · quedaría <span class="num" style=${{ color: r.balanceDespues < 0 ? 'var(--gasto)' : 'inherit' }}>${fmtConMoneda(r.balanceDespues, principal)}</span></div>
+          <div class="sub">${fmtFecha(r.fecha)} · quedaría <span class="num" style=${{ color: r.balanceDespues < 0 ? 'var(--gasto)' : 'inherit', fontWeight: r.balanceDespues < 0 ? 700 : 400 }}>${fmtConMoneda(r.balanceDespues, principal)}</span></div>
         </div>
         <div class="monto num ${r.tipo === 'ingreso' ? 'm-ingreso' : 'm-gasto'}">
           ${r.tipo === 'ingreso' ? '+' : '−'}${fmtConMoneda(r.montoP, principal)}
-          <span class="hora" style=${{ color: r.ok ? 'var(--ingreso)' : 'var(--gasto)' }}>${r.ok ? '✓ alcanza' : `⚠ faltan ${fmtConMoneda(r.faltante, principal)}`}</span>
         </div>
       </div>`)}
       ${pa.rows.length === 0 && html`<div class="vacio">
         Ej.: <b>Salario</b> cada mes el día 10, <b>Celular</b> el día 11.<br/>
         Así la app te dice si te alcanzará para cada pago.
+      <//>`}
+      ${pa.rows.some(r => !r.ok) && html`<div class="dato-cuenta" style=${{ marginTop: '6px', color: 'var(--warn)' }}>
+        En amarillo, los pagos que tu dinero no cubre a tiempo.
       <//>`}
       ${pa.rows.length > 0 && html`<div class="dato-cuenta" style=${{ marginTop: '6px' }}>Solo considera tus fijos — no los gastos de cada día.</div>`}
     </div>
@@ -156,7 +157,6 @@ function PanelFijos({ S, cerrar }) {
       poder adquisitivo teórico de Inicio.
     </div>
     ${lista.map(f => html`<div key=${f.id} class="fila" onClick=${() => setEdit(f)}>
-      <span class="emoji">${f.tipo === 'ingreso' ? '💰' : '🔻'}</span>
       <div class="cuerpo">
         <div class="titulo">${f.nombre || (f.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo')}</div>
         <div class="sub">${FRECV[f.frecuencia] || f.frecuencia}${f.frecuencia !== 'quincenal' ? ' · día ' + f.dia : ''} · ${f.moneda}${f.activa === false ? ' · inactivo' : ''}</div>

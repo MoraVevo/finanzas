@@ -12,6 +12,7 @@
   --ingreso: #1f9d61;
   --transfer: #5b6b8c;
   --warn: #b8860b;
+  --warn-soft: #f7edd3;
   --chip: #eef2f0;
   --danger-soft: #fdecee;
   --radius: 18px;
@@ -31,6 +32,8 @@
     --gasto: #ff6b7a;
     --ingreso: #3ecf8e;
     --transfer: #93a4c9;
+    --warn: #e0b34c;
+    --warn-soft: #38311d;
     --chip: #232a27;
     --danger-soft: #3a2226;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.5);
@@ -281,6 +284,11 @@ input[type="datetime-local"], input[type="date"] { min-height: 42px; }
 /* Registros futuros cuya fecha ya pasó */
 .fila-vencida { opacity: .72; }
 .fila-vencida .titulo { text-decoration: line-through; text-decoration-color: var(--muted); }
+
+/* Celdas de pagos fijos: color como estado, sin emojis ni texto */
+.fila-pago { border-bottom: none; border-radius: 12px; margin-bottom: 3px; padding-left: 12px; }
+.fila-pago-ok { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.fila-pago-falta { background: var(--warn-soft); box-shadow: inset 3px 0 0 var(--warn); }
 
 .nav-mes { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .nav-mes .mes { font-size: 16px; font-weight: 800; text-transform: capitalize; }

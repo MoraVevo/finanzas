@@ -201,7 +201,7 @@ function VistaFlujo({ S, todo }) {
 
     <div class="tarjeta">
       <div class="segmentado" style=${{ marginBottom: '10px' }}>
-        ${[['linea', '📈 Línea'], ['pie', '🥧 Pie'], ['barras', '📊 Barras']].map(([v, t]) => html`
+        ${[['linea', 'Línea'], ['pie', 'Pie'], ['barras', 'Barras']].map(([v, t]) => html`
           <button key=${v} class=${grafica === v ? 'sel' : ''} onClick=${() => setGrafica(v)}>${t}</button>`)}
       </div>
       ${grafica === 'linea' && html`<div>
@@ -224,7 +224,6 @@ function VistaFlujo({ S, todo }) {
         const destinoF = f.tipo === 'transferencia' ? S.cuentas.find(c => c.id === f.cuentaDestino) : null;
         const esDeuda = f.tipo === 'transferencia' && destinoF && (destinoF.tipo === 'tarjeta' || destinoF.tipo === 'deuda');
         return html`<div key=${f.id} class="fila" onClick=${() => setEditor(f)}>
-          <span class="emoji">${f.tipo === 'ingreso' ? '💰' : f.tipo === 'gasto' ? '🔻' : esDeuda ? '💳' : '🔁'}</span>
           <div class="cuerpo">
             <div class="titulo">${f.tipo === 'transferencia'
               ? (esDeuda ? `Pago de deuda · ${destinoF?.nombre || '?'}` : `${S.cuentas.find(c => c.id === f.cuenta)?.nombre || '?'} → ${destinoF?.nombre || '?'}`)
@@ -243,17 +242,20 @@ function VistaFlujo({ S, todo }) {
 
       ${fl.vencidos.length > 0 && html`<div style=${{ marginTop: '10px' }}>
         <h3>Ya pasó su fecha</h3>
-        ${fl.vencidos.map(f => html`<div key=${f.id} class="fila fila-vencida" onClick=${() => setEditor(f)}>
-          <span class="emoji">${f.tipo === 'ingreso' ? '💰' : f.tipo === 'gasto' ? '🔻' : '🔁'}</span>
+        ${fl.vencidos.map(f => {
+          const destinoV = f.tipo === 'transferencia' ? S.cuentas.find(c => c.id === f.cuentaDestino) : null;
+          const esDeudaV = f.tipo === 'transferencia' && destinoV && (destinoV.tipo === 'tarjeta' || destinoV.tipo === 'deuda');
+          return html`<div key=${f.id} class="fila fila-vencida" onClick=${() => setEditor(f)}>
           <div class="cuerpo">
             <div class="titulo">${f.tipo === 'transferencia'
-              ? `${S.cuentas.find(c => c.id === f.cuenta)?.nombre || '?'} → ${S.cuentas.find(c => c.id === f.cuentaDestino)?.nombre || '?'}`
+              ? (esDeudaV ? `Pago de deuda · ${destinoV?.nombre || '?'}` : `${S.cuentas.find(c => c.id === f.cuenta)?.nombre || '?'} → ${destinoV?.nombre || '?'}`)
               : (f.nombre || (f.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'))}</div>
             <div class="sub">${fmtFechaCorta(f.fecha)} · toca para reprogramarlo</div>
           </div>
           <button class="chip" style=${{ background: 'var(--accent)', color: 'var(--on-accent)' }}
             onClick=${e => { e.stopPropagation(); registrarOcurrido(f); }}>✓ Ya ocurrió</button>
-        <//>`)}
+        <//>`;
+        })}
         <div class="dato-cuenta" style=${{ marginTop: '6px' }}>
           "Ya ocurrió" lo convierte en movimiento real con su fecha original (y lo quita de aquí). Tu pasado vive solo en Movimientos.
         <//>
@@ -366,9 +368,9 @@ function EditorFuturo({ f, S, cerrar }) {
 
   return html`<div>
     <div class="segmentado" style=${{ marginBottom: '10px' }}>
-      <button class=${d.tipo === 'ingreso' ? 'sel' : ''} onClick=${() => set({ tipo: 'ingreso', categoria: null })}>💰 Ingreso</button>
-      <button class=${d.tipo === 'gasto' ? 'sel' : ''} onClick=${() => set({ tipo: 'gasto', categoria: null })}>🔻 Gasto</button>
-      <button class=${d.tipo === 'transferencia' ? 'sel' : ''} onClick=${() => set({ tipo: 'transferencia', categoria: null })}>🔁 Transferencia</button>
+      <button class=${d.tipo === 'ingreso' ? 'sel' : ''} onClick=${() => set({ tipo: 'ingreso', categoria: null })}>Ingreso</button>
+      <button class=${d.tipo === 'gasto' ? 'sel' : ''} onClick=${() => set({ tipo: 'gasto', categoria: null })}>Gasto</button>
+      <button class=${d.tipo === 'transferencia' ? 'sel' : ''} onClick=${() => set({ tipo: 'transferencia', categoria: null })}>Transferencia</button>
     </div>
     <div style=${{ display: 'grid', gap: '8px' }}>
       ${d.tipo !== 'transferencia' && html`<input placeholder="Nombre (ej. Salario, Alquiler…)" value=${d.nombre}
@@ -444,7 +446,7 @@ function ChartPie({ S, fl, principal }) {
     return f.tipo === 'transferencia' && d && (d.tipo === 'tarjeta' || d.tipo === 'deuda');
   };
   const grupoDe = f => f.tipo === 'ingreso' ? 'ingresos' : f.tipo === 'gasto' ? 'gastos' : (esPagoDeuda(f) ? 'deuda' : 'transferencias');
-  const GRUPOS = { gastos: '🔻 Gastos', ingresos: '💰 Ingresos', deuda: '💳 Pagos de deuda', transferencias: '🔁 Transferencias' };
+  const GRUPOS = { gastos: 'Gastos', ingresos: 'Ingresos', deuda: 'Pagos de deuda', transferencias: 'Transferencias' };
 
   const subEtiqueta = f => {
     if (grupo === 'gastos') {
@@ -505,7 +507,7 @@ function ChartPie({ S, fl, principal }) {
       ${!grupo && html`<div class="dato-cuenta" style=${{ marginBottom: '8px', textAlign: 'center' }}>
         Entra <b class="num" style=${{ color: 'var(--ingreso)' }}>+${fmtMonto(entra, 2)}</b> · Sale
         <b class="num" style=${{ color: 'var(--gasto)' }}>−${fmtMonto(sale, 2)}</b> · Se mueve
-        <b class="num">↻ ${fmtMonto(mueve, 2)}</b> (${principal})
+        <b class="num">${fmtMonto(mueve, 2)}</b> (${principal})
       <//>`}
       ${grupo && html`<h3 style=${{ fontSize: '11px' }}>${GRUPOS[grupo]} · desglose</h3>`}
       <div style=${{ display: 'flex', alignItems: 'center', gap: '12px' }}>
