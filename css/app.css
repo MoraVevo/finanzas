@@ -225,10 +225,14 @@ input[type="datetime-local"], input[type="date"] { min-height: 42px; }
 }
 .sheet {
   background: var(--bg); width: 100%; max-width: 520px; max-height: 88dvh; overflow-y: auto;
-  border-radius: 22px 22px 0 0; padding: 10px 18px calc(env(safe-area-inset-bottom, 0px) + 20px);
+  overscroll-behavior: contain; /* el rebote/scroll no se pasa a la página de atrás */
+  border-radius: 22px 22px 0 0; padding: 0 18px calc(env(safe-area-inset-bottom, 0px) + 20px);
   animation: subir .22s cubic-bezier(.2,.9,.3,1);
 }
-.sheet .asa { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 4px auto 12px; }
+/* Zona de agarre: área generosa para tocar o deslizar hacia abajo y cerrar */
+.sheet .asa-zona { padding: 15px 0 10px; margin: 0 -18px; touch-action: none; cursor: grab; }
+.sheet .asa-zona:active { cursor: grabbing; }
+.sheet .asa { width: 44px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto; }
 .sheet h2 { margin: 2px 0 12px; font-size: 19px; font-weight: 800; }
 @keyframes subir { from { transform: translateY(60px); opacity: .4; } }
 @keyframes fadeIn { from { opacity: 0; } }

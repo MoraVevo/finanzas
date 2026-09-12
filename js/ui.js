@@ -3,11 +3,55 @@ import { html, useState, useEffect, useRef } from '../vendor/preact-standalone.m
 import { TIPOS_CUENTA, saldoCuenta } from './model.js';
 import { fmtConMoneda, fmtFecha, fmtHora, isoLocal, isoDia } from './util.js';
 
-/* ---------- Sheet: panel deslizante inferior ---------- */
+/* ---------- Sheet: panel deslizante inferior ----------
+   Se cierra tocando la asa, deslizando la asa hacia abajo (gesto nativo),
+   tocando el fondo oscuro o con Escape en laptop. */
 export function Sheet({ titulo, onClose, children }) {
+  const el = useRef(null);
+  const gesto = useRef({ startY: null, dy: 0, movio: false });
+
+  useEffect(() => {
+    if (!onClose) return;
+    const f = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', f);
+    return () => window.removeEventListener('keydown', f);
+  }, [onClose]);
+
+  const agarrar = e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    gesto.current = { startY: e.clientY, dy: 0, movio: false, id: e.pointerId };
+    e.currentTarget.setPointerCapture?.(e.pointerId); // el gesto sigue al dedo/aunque salga de la zona
+  };
+  const mover = e => {
+    const g = gesto.current;
+    if (g.startY == null || e.pointerId !== g.id) return;
+    g.dy = e.clientY - g.startY;
+    if (Math.abs(g.dy) > 8) g.movio = true;
+    if (g.dy > 0 && el.current) {
+      el.current.style.transition = 'none';
+      el.current.style.transform = `translateY(${g.dy}px)`; // el panel sigue al dedo
+    }
+  };
+  const soltar = e => {
+    const g = gesto.current;
+    if (g.startY == null || (e && e.pointerId !== g.id)) return;
+    if (el.current) { el.current.style.transition = ''; el.current.style.transform = ''; }
+    if (g.dy > 80 && onClose) onClose();
+    gesto.current = { startY: null, dy: 0, movio: g.movio };
+  };
+  const tocarAsa = () => {
+    // un toque simple (sin arrastre) también cierra
+    if (gesto.current.movio) { gesto.current.movio = false; return; }
+    onClose?.();
+  };
+
   return html`<div class="sheet-fondo" onClick=${e => e.target === e.currentTarget && onClose?.()}>
-    <div class="sheet">
-      <div class="asa" onClick=${onClose}></div>
+    <div class="sheet" ref=${el}>
+      <div class="asa-zona"
+        onPointerDown=${agarrar} onPointerMove=${mover} onPointerUp=${soltar} onPointerCancel=${soltar}
+        onClick=${tocarAsa}>
+        <div class="asa"></div>
+      </div>
       ${titulo && html`<h2>${titulo}</h2>`}
       ${children}
     </div>
