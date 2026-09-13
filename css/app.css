@@ -241,6 +241,22 @@ input[type="datetime-local"], input[type="date"] { min-height: 42px; }
 }
 .teclado button:active { background: var(--chip); transform: scale(.96); }
 
+/* Teclado numérico bajo demanda: sube al tocar el monto */
+.teclado-wrap {
+  overflow: hidden; max-height: 0; opacity: 0; transform: translateY(10px);
+  transition: max-height .28s cubic-bezier(.2,.9,.3,1), opacity .2s ease, transform .28s cubic-bezier(.2,.9,.3,1);
+}
+.teclado-wrap.abierto { max-height: 250px; opacity: 1; transform: none; }
+
+/* El monto como campo tocable, con caret parpadeante cuando el teclado está activo */
+.pa-monto.activo { cursor: text; }
+.caret {
+  display: inline-block; width: 2.5px; height: .85em; margin-left: 5px;
+  background: var(--accent); border-radius: 2px; vertical-align: baseline;
+  animation: parpadeo 1.05s steps(1) infinite;
+}
+@keyframes parpadeo { 50% { opacity: 0; } }
+
 .mini-monto { display: flex; align-items: center; gap: 8px; }
 .mini-monto input { text-align: right; font-weight: 700; }
 

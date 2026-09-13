@@ -16,6 +16,8 @@ export default function Agregar({ txId }) {
   const [datos, setDatos] = useState(null);
   const [picker, setPicker] = useState(null); // 'cuenta' | 'destino'
   const [txs, setTxs] = useState([]);
+  const [teclado, setTeclado] = useState(false);
+  const [arrastre, setArrastre] = useState(null); // frac del drag del slider de tipo
   const datosRef = useRef(null);
   datosRef.current = datos;
 
@@ -189,10 +191,15 @@ export default function Agregar({ txId }) {
         <button class="btn-icono" onClick=${() => nav(getState().routeAnterior || '#/')}>✕</button>
         ${datos.editando && html`<button class="btn-icono" style=${{ color: 'var(--gasto)' }} onClick=${eliminar}>🗑️</button>`}
       </div>
-      <${Segmentado} opciones=${[['gasto', 'Gasto'], ['ingreso', 'Ingreso'], ['transferencia', 'Transferencia']]} valor=${datos.tipo} onChange=${cambiarTipo} />
+      <${Segmentado} opciones=${[['gasto', 'Gasto'], ['ingreso', 'Ingreso'], ['transferencia', 'Transferencia']]} valor=${datos.tipo} onChange=${cambiarTipo}
+        onArrastre=${frac => setArrastre({ frac })} onFin=${() => setArrastre(null)} />
     </div>
 
-    <div class="pa-scroll">
+    <div class="pa-scroll" onClickCapture=${() => setTeclado(false)}>
+      <div class=${arrastre ? '' : 'trans-vista'} style=${{
+      transform: `translateX(${-(arrastre ? arrastre.frac : 0) * 15}%)`,
+      opacity: 1 - Math.abs(arrastre ? arrastre.frac : 0) * 0.35
+    }}>
       <div class="pa-seccion">
         <label>${datos.tipo === 'transferencia' ? 'Desde' : 'Cuenta'}</label>
         <div class="chips-scroll">
@@ -247,11 +254,14 @@ export default function Agregar({ txId }) {
           onQuitarNueva=${id => set({ nuevas: datos.nuevas.filter(a => a.id !== id) })}
           onAgregar=${agregarFoto} />
       <//>
+    <//>
     </div>
 
     <div class="pa-inferior">
       <div class="pa-monto-fila">
-        <div class="pa-monto num"><span class="simbolo">${simbolo}</span>${montoFormateado}</div>
+        <div class=${'pa-monto num' + (teclado ? ' activo' : '')} onClick=${() => setTeclado(true)}>
+          <span class="simbolo">${simbolo}</span>${montoFormateado}${teclado && html`<span class="caret" />`}
+        </div>
         ${datos.tipo !== 'transferencia' && html`<div class="pa-monedas">
           ${opcionesMoneda.map(m => html`<button key=${m} class=${'chip' + (m === moneda ? ' sel' : '')}
             onClick=${() => set({ moneda: m })}>${m}</button>`)}
@@ -265,7 +275,9 @@ export default function Agregar({ txId }) {
       <button class="btn btn-primario" disabled=${!puede} onClick=${guardar}>
         ${datos.editando ? 'Guardar cambios' : 'Guardar'}
       </button>
-      <${Teclado} onTecla=${tecla} />
+      <div class=${'teclado-wrap' + (teclado ? ' abierto' : '')}>
+        <${Teclado} onTecla=${tecla} />
+      <//>
     </div>
 
     ${picker && html`<${PickerCuentas}
