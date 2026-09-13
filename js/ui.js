@@ -99,7 +99,7 @@ export function Teclado({ onTecla }) {
 
 /* ---------- Segmentado con pulgar deslizante (se toca Y se arrastra) ----------
    Gestos con listeners nativos directos: fiables en iOS. */
-export function Segmentado({ opciones, valor, onChange }) {
+export function Segmentado({ opciones, valor, onChange, onArrastre, onFin }) {
   const ref = useRef(null);
   const movio = useRef(false);
   const drag = useRef(null); // { idx, iniX, dx, w }
@@ -123,11 +123,13 @@ export function Segmentado({ opciones, valor, onChange }) {
       if (!g) return;
       g.dx = e.clientX - g.iniX;
       if (Math.abs(g.dx) > 6) movio.current = true;
+      onArrastre?.(Math.max(-1, Math.min(1, g.dx / (g.w * n))));
       forzar(f => f + 1);
     };
     const soltar = () => {
       const g = drag.current;
       if (!g) return;
+      onFin?.();
       const objetivo = Math.min(n - 1, Math.max(0, Math.round(g.idx + g.dx / g.w)));
       drag.current = null;
       forzar(f => f + 1);

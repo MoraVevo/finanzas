@@ -340,3 +340,6 @@ input[type="datetime-local"], input[type="date"] { min-height: 42px; }
 .preview-foto { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.9); display: grid; place-items: center; padding: 20px; }
 .preview-foto img { max-width: 100%; max-height: 85dvh; border-radius: 12px; }
 .preview-foto .cerrar { position: absolute; top: calc(env(safe-area-inset-top,0px) + 14px); right: 18px; font-size: 26px; color: #fff; }
+
+/* Transición de entrada/salida de vistas principales */
+.trans-vista { transition: transform .3s cubic-bezier(.2,.9,.3,1), opacity .3s ease; }

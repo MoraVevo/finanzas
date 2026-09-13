@@ -22,12 +22,20 @@ export default function Estadisticas() {
 
   if (!todo) return html`<div class="vista"><div class="vacio" style=${{ paddingTop: '60px' }}>Cargando…</div></div>`;
 
+  const [arrastre, setArrastre] = useState(null); // frac del drag del segmentado
+  const f = arrastre ? arrastre.frac : 0;
   return html`<div class="vista">
     <div class="cabecera"><h1>Estadísticas</h1></div>
-    <${Segmentado} opciones=${[['mes', 'Este mes'], ['flujo', 'Flujo y futuro']]} valor=${vista} onChange=${setVista} />
-    ${vista === 'mes'
-      ? html`<${VistaMes} S=${S} todo=${todo} />`
-      : html`<${VistaFlujo} S=${S} todo=${todo} />`}
+    <${Segmentado} opciones=${[['mes', 'Este mes'], ['flujo', 'Flujo y futuro']]} valor=${vista} onChange=${setVista}
+      onArrastre=${frac => setArrastre({ frac })} onFin=${() => setArrastre(null)} />
+    <div class=${arrastre ? '' : 'trans-vista'} style=${{
+      transform: `translateX(${-f * 18}%)`,
+      opacity: 1 - Math.abs(f) * 0.4
+    }}>
+      ${vista === 'mes'
+        ? html`<${VistaMes} S=${S} todo=${todo} />`
+        : html`<${VistaFlujo} S=${S} todo=${todo} />`}
+    <//>
   </div>`;
 }
 
@@ -763,32 +771,57 @@ function TarjetaDia({ st, est, clave, principal }) {
   const orden = VISTAS.map(v => v[0]);
   const [vista, setVista] = useState('dia');
   const cardRef = useRef(null);
-  // swipe nativo directo: gestos fiables en iOS
+  const trackRef = useRef(null);
+  const vistaRef = useRef('dia');
+  vistaRef.current = vista;
+  // swipe nativo que SIGUE AL DEDO: el track se desplaza en tiempo real y al
+  // soltar encaja en la vista más cercana con animación.
   useEffect(() => {
     const card = cardRef.current;
-    if (!card) return;
-    let x = null, y = null;
-    const ini = e => { x = e.touches[0].clientX; y = e.touches[0].clientY; };
+    const track = trackRef.current;
+    if (!card || !track) return;
+    let x0 = null, y0 = null, idx0 = 0, w = 1;
+    const ini = e => {
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+      w = card.getBoundingClientRect().width || 1;
+      idx0 = orden.indexOf(vistaRef.current);
+    };
+    const mov = e => {
+      if (x0 == null) return;
+      const dx = e.touches[0].clientX - x0;
+      if (Math.abs(dx) < 8) return;
+      track.style.transition = 'none';
+      track.style.transform = `translateX(calc(${-idx0 * 100}% + ${dx}px))`;
+    };
     const fin = e => {
-      if (x == null) return;
-      const dx = e.changedTouches[0].clientX - x;
-      const dy = e.changedTouches[0].clientY - y;
-      x = null;
-      if (Math.abs(dx) < 60 || Math.abs(dy) > 50) return;
-      setVista(v => {
-        const i = orden.indexOf(v);
-        return orden[(i + (dx < 0 ? 1 : -1) + orden.length) % orden.length];
-      });
+      if (x0 == null) return;
+      const dx = e.changedTouches[0].clientX - x0;
+      x0 = null;
+      track.style.transition = '';
+      const umbral = Math.max(50, w * 0.18);
+      const target = Math.abs(dx) > umbral
+        ? Math.min(orden.length - 1, Math.max(0, idx0 + (dx < 0 ? 1 : -1)))
+        : idx0;
+      track.style.transform = `translateX(-${target * 100}%)`;
+      if (target !== idx0) setVista(orden[target]);
     };
     card.addEventListener('touchstart', ini, { passive: true });
+    card.addEventListener('touchmove', mov, { passive: true });
     card.addEventListener('touchend', fin);
     return () => {
       card.removeEventListener('touchstart', ini);
+      card.removeEventListener('touchmove', mov);
       card.removeEventListener('touchend', fin);
     };
   }, []);
 
   const TITULOS = { dia: 'Gasto por día', estructura: 'Fijo vs variable · este mes', cobertura: 'Cobertura de tus fijos' };
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    track.style.transition = '';
+    track.style.transform = `translateX(-${orden.indexOf(vista) * 100}%)`;
+  }, [vista]);
   const idx = Math.max(0, orden.indexOf(vista));
   const r = est ? Math.round(est.fijoOut ? est.fijoIn / est.fijoOut * 100 : 0) : 0;
   const barra = (nom, val, color, maxV) => html`<div key=${nom} class="barra-fila">
@@ -801,7 +834,7 @@ function TarjetaDia({ st, est, clave, principal }) {
     <h3>${TITULOS[vista]}</h3>
     <${Segmentado} opciones=${VISTAS} valor=${vista} onChange=${setVista} />
     <div class="carrusel" style=${{ marginTop: '10px' }}>
-      <div class="carrusel-track" style=${{ transform: `translateX(-${idx * 100}%)` }}>
+      <div class="carrusel-track" ref=${trackRef}>
         <div class="carrusel-slide">
           <${ChartDias} porDia=${st.porDia} diasMes=${diasMesDe(clave)} max=${Math.max(1, ...st.porDia.map(d => d.monto))} principal=${principal} />
         <//>
