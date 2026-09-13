@@ -207,7 +207,7 @@ input[type="datetime-local"], input[type="date"] { min-height: 42px; }
    del viewport y solo el área de campos (pa-scroll) se desplaza. */
 .pantalla-agregar { display: flex; flex-direction: column; height: 100dvh; max-width: 520px; margin: 0 auto; }
 .pa-sup { padding: calc(env(safe-area-inset-top, 0px) + 8px) 14px 4px; }
-.pa-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 14px; }
+.pa-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; /* el peek no abre pan horizontal */ padding: 4px 16px 14px; }
 .pa-seccion { margin-top: 12px; }
 .pa-seccion > label { display: block; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 7px; }
 
