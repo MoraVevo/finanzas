@@ -13,6 +13,10 @@ export default function Estadisticas() {
   const S = useStore();
   const [vista, setVista] = useState('mes');
   const [todo, setTodo] = useState(null); // todas las tx
+  const [arrastre, setArrastre] = useState(null); // frac del drag de la vista
+  const raizRef = useRef(null);
+  const vistaRef = useRef('mes');
+  vistaRef.current = vista;
 
   useEffect(() => {
     let vivo = true;
@@ -20,11 +24,63 @@ export default function Estadisticas() {
     return () => { vivo = false; };
   }, [S.cuentas, S.ajustes, S.futuros]);
 
+  // Deslizar desde cualquier zona sin gesto propio (resúmenes, tarjetas de
+  // categorías, encabezado…) también mueve la vista entre "Este mes" y "Flujo
+  // y futuro": el contenido sigue al dedo y al soltar, un arrastre decidido
+  // cambia de vista. Las zonas con gesto horizontal propio (segmentados,
+  // carrusel de la tarjeta, gráfica de flujo, hojas) se excluyen.
+  useEffect(() => {
+    const raiz = raizRef.current;
+    if (!raiz) return;
+    let x0 = null, y0 = null, modo = null;
+    const zonaConGesto = '.seg, .tarjeta-carrusel, .flujo-chart, .sheet-fondo, input, select, textarea';
+    const ini = e => {
+      if (e.touches.length !== 1) return;
+      if (e.target.closest?.(zonaConGesto)) return;
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; modo = null;
+    };
+    const mov = e => {
+      if (x0 == null) return;
+      if (e.touches.length > 1) { x0 = null; modo = null; setArrastre(null); return; }
+      const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
+      if (!modo) {
+        if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.3) modo = 'h';
+        else if (Math.abs(dy) > 12) { x0 = null; return; } // scroll vertical gana
+        else return;
+      }
+      const vw = window.innerWidth || 1;
+      let frac = -dx / vw;
+      const muerto = vistaRef.current === 'mes' ? dx > 0 : dx < 0;
+      if (muerto) frac *= 0.22; // resistencia al empujar más allá del límite
+      setArrastre({ frac: Math.max(-1, Math.min(1, frac)) });
+    };
+    const fin = e => {
+      if (x0 == null) { modo = null; return; }
+      const dx = e.changedTouches[0].clientX - x0;
+      const fueH = modo === 'h';
+      x0 = null; modo = null;
+      setArrastre(null);
+      if (!fueH) return;
+      const umbral = Math.max(60, (window.innerWidth || 1) * 0.16);
+      if (vistaRef.current === 'mes' && dx < -umbral) setVista('flujo');
+      else if (vistaRef.current === 'flujo' && dx > umbral) setVista('mes');
+    };
+    raiz.addEventListener('touchstart', ini, { passive: true });
+    raiz.addEventListener('touchmove', mov, { passive: true });
+    raiz.addEventListener('touchend', fin);
+    raiz.addEventListener('touchcancel', fin);
+    return () => {
+      raiz.removeEventListener('touchstart', ini);
+      raiz.removeEventListener('touchmove', mov);
+      raiz.removeEventListener('touchend', fin);
+      raiz.removeEventListener('touchcancel', fin);
+    };
+  }, [todo]);
+
   if (!todo) return html`<div class="vista"><div class="vacio" style=${{ paddingTop: '60px' }}>Cargando…</div></div>`;
 
-  const [arrastre, setArrastre] = useState(null); // frac del drag del segmentado
   const f = arrastre ? arrastre.frac : 0;
-  return html`<div class="vista">
+  return html`<div class="vista" ref=${raizRef}>
     <div class="cabecera"><h1>Estadísticas</h1></div>
     <${Segmentado} opciones=${[['mes', 'Este mes'], ['flujo', 'Flujo y futuro']]} valor=${vista} onChange=${setVista}
       onArrastre=${frac => setArrastre({ frac })} onFin=${() => setArrastre(null)} />
@@ -184,7 +240,7 @@ function VistaFlujo({ S, todo }) {
         ${nombreScope ? `Hoy en ${nombreScope}` : 'Hoy tienes'}
       </div>
       <div class="num" style=${{ fontSize: '30px', fontWeight: 800 }}>${fmtConMoneda(fl.balanceHoy, principal)}</div>
-      <${Segmentado} opciones=${HORIZONTES.map(([m, t]) => [m, 'Proyectar ' + t])} valor=${horizonte} onChange=${setHorizonte} />
+      <${Segmentado} opciones=${HORIZONTES} valor=${horizonte} onChange=${setHorizonte} />
     </div>
 
     <div class="stats-grid-3">
@@ -774,33 +830,42 @@ function TarjetaDia({ st, est, clave, principal }) {
   const trackRef = useRef(null);
   const vistaRef = useRef('dia');
   vistaRef.current = vista;
-  // swipe nativo que SIGUE AL DEDO: el track se desplaza en tiempo real y al
-  // soltar encaja en la vista más cercana con animación.
+  // Swipe que SIGUE AL DEDO: dentro de la gráfica el carrusel va con el dedo
+  // (directo). Desde el encabezado (segmentado Día/Estructura/Fijos) va al
+  // REVÉS: deslizar a la izquierda mueve el carrusel a la derecha —hacia la
+  // vista anterior— y viceversa, igual que la vista que el segmentado elige.
   useEffect(() => {
     const card = cardRef.current;
     const track = trackRef.current;
     if (!card || !track) return;
-    let x0 = null, y0 = null, idx0 = 0, w = 1;
+    let x0 = null, y0 = null, idx0 = 0, w = 1, invertido = false;
     const ini = e => {
       x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
       w = card.getBoundingClientRect().width || 1;
       idx0 = orden.indexOf(vistaRef.current);
+      invertido = !!e.target.closest?.('.seg'); // arrastre desde el encabezado
     };
     const mov = e => {
       if (x0 == null) return;
       const dx = e.touches[0].clientX - x0;
-      if (Math.abs(dx) < 8) return;
+      const dy = e.touches[0].clientY - y0;
+      if (Math.abs(dx) < 8 || Math.abs(dy) > Math.abs(dx)) return; // scroll vertical gana
+      let d = invertido ? -dx : dx;
+      // sin asomar más allá de los extremos: d negativo asoma la siguiente,
+      // positivo la anterior
+      d = Math.min(idx0 * w, Math.max(-(orden.length - 1 - idx0) * w, d));
       track.style.transition = 'none';
-      track.style.transform = `translateX(calc(${-idx0 * 100}% + ${dx}px))`;
+      track.style.transform = `translateX(calc(${-idx0 * 100}% + ${d}px))`;
     };
     const fin = e => {
       if (x0 == null) return;
       const dx = e.changedTouches[0].clientX - x0;
       x0 = null;
       track.style.transition = '';
+      const d = invertido ? -dx : dx;
       const umbral = Math.max(50, w * 0.18);
-      const target = Math.abs(dx) > umbral
-        ? Math.min(orden.length - 1, Math.max(0, idx0 + (dx < 0 ? 1 : -1)))
+      const target = Math.abs(d) > umbral
+        ? Math.min(orden.length - 1, Math.max(0, idx0 + (d < 0 ? 1 : -1)))
         : idx0;
       track.style.transform = `translateX(-${target * 100}%)`;
       if (target !== idx0) setVista(orden[target]);
@@ -808,10 +873,12 @@ function TarjetaDia({ st, est, clave, principal }) {
     card.addEventListener('touchstart', ini, { passive: true });
     card.addEventListener('touchmove', mov, { passive: true });
     card.addEventListener('touchend', fin);
+    card.addEventListener('touchcancel', fin);
     return () => {
       card.removeEventListener('touchstart', ini);
       card.removeEventListener('touchmove', mov);
       card.removeEventListener('touchend', fin);
+      card.removeEventListener('touchcancel', fin);
     };
   }, []);
 
@@ -830,13 +897,14 @@ function TarjetaDia({ st, est, clave, principal }) {
   </div>`;
   const maxV = Math.max(1, est.fijoIn, est.varIn, est.fijoOut, est.varOut);
 
-  return html`<div class="tarjeta" ref=${cardRef} style=${{ touchAction: 'pan-y' }}>
+  return html`<div class="tarjeta tarjeta-carrusel" ref=${cardRef} style=${{ touchAction: 'pan-y' }}>
     <h3>${TITULOS[vista]}</h3>
     <${Segmentado} opciones=${VISTAS} valor=${vista} onChange=${setVista} />
     <div class="carrusel" style=${{ marginTop: '10px' }}>
       <div class="carrusel-track" ref=${trackRef}>
         <div class="carrusel-slide">
-          <${ChartDias} porDia=${st.porDia} diasMes=${diasMesDe(clave)} max=${Math.max(1, ...st.porDia.map(d => d.monto))} principal=${principal} />
+          <${ChartDias} porDia=${st.porDia} diasMes=${diasMesDe(clave)} max=${Math.max(1, ...st.porDia.map(d => d.monto))}
+            principal=${principal} hoyDia=${clave === claveMesActual() ? deISO(isoDia()).getDate() : null} />
         <//>
         <div class="carrusel-slide">
           ${barra('Ingresos fijos', est.fijoIn, 'var(--ingreso)', maxV)}
@@ -875,21 +943,56 @@ function TarjetaDia({ st, est, clave, principal }) {
 
 
 /* ---------- Gráficas de la vista Mes ---------- */
-function ChartDias({ porDia, diasMes, max, principal }) {
+function ChartDias({ porDia, diasMes, max, principal, hoyDia = null }) {
   const porFecha = new Map(porDia.map(d => [d.dia.slice(8), d.monto]));
-  const W = 320, H = 90, bw = W / diasMes;
-  const alto = v => Math.max(2, v / max * (H - 16));
-  return html`<svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: '90px' }}>
+  const W = 320, H = 150, PL = 30, PR = 6, PT = 12, PB = 16;
+  const altoPlot = H - PT - PB;
+  // tope "redondo" para que las etiquetas del eje Y sean legibles (ej. 2.5k)
+  const niceCeil = v => {
+    const p = 10 ** Math.floor(Math.log10(Math.max(1, v)));
+    const n = v / p;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+  };
+  const tope = niceCeil(max);
+  const alto = v => Math.max(2, v / tope * altoPlot);
+  const X = i => PL + (i + 0.5) * (W - PL - PR) / diasMes;
+  const bw = Math.max(2, (W - PL - PR) / diasMes - 2);
+
+  // valores sobre las barras: todos si hay pocos, si no solo los altos (el
+  // máximo siempre) para que no se amontonen
+  const conMonto = Array.from({ length: diasMes }, (_, i) => i)
+    .filter(i => porFecha.get(String(i + 1).padStart(2, '0')) > 0);
+  const mostrar = new Set(conMonto.length <= 8 ? conMonto
+    : conMonto.filter(i => alto(porFecha.get(String(i + 1).padStart(2, '0'))) >= altoPlot * 0.55));
+  if (conMonto.length) {
+    const iMax = conMonto.reduce((a, b) =>
+      porFecha.get(String(b + 1).padStart(2, '0')) > porFecha.get(String(a + 1).padStart(2, '0')) ? b : a);
+    mostrar.add(iMax);
+  }
+  const diasMarcados = [...new Set([1, 5, 10, 15, 20, 25, diasMes])].filter(d => d <= diasMes);
+
+  return html`<svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: '150px' }}>
+    ${[tope / 2, tope].map((v, i) => html`<g key=${'y' + i}>
+      <line x1=${PL} x2=${W - PR} y1=${H - PB - alto(v)} y2=${H - PB - alto(v)}
+        stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4" />
+      <text x=${PL - 4} y=${H - PB - alto(v) + 2.5} textAnchor="end" style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtMonto(v, 0)}</text>
+    </g>`)}
+    <line x1=${PL} x2=${W - PR} y1=${H - PB} y2=${H - PB} stroke="var(--line)" stroke-width="1" />
     ${Array.from({ length: diasMes }, (_, i) => {
       const v = porFecha.get(String(i + 1).padStart(2, '0')) || 0;
       const h = alto(v);
-      return html`<rect key=${i} x=${i * bw + 1} y=${H - h - 12} width=${bw - 2} height=${h} rx="2.5"
-        fill=${v ? 'var(--accent)' : 'var(--chip)'} opacity=${v ? 1 : .55}>
-        <title>Día ${i + 1}: ${fmtConMoneda(v, principal)}</title>
-      </rect>`;
+      return html`<g key=${i}>
+        <rect x=${X(i) - bw / 2} y=${H - PB - h} width=${bw} height=${h} rx="2.5"
+          fill=${v ? 'var(--accent)' : 'var(--chip)'} opacity=${v ? 1 : .55}>
+          <title>Día ${i + 1}: ${fmtConMoneda(v, principal)}</title>
+        </rect>
+        ${mostrar.has(i) && html`<text x=${X(i)} y=${H - PB - h - 3} textAnchor="middle"
+          style=${{ fontSize: '6.5px', fontWeight: 700 }} fill="var(--accent)">${fmtMonto(v, 0)}</text>`}
+      </g>`;
     })}
-    <text x="0" y=${H - 1} style=${{ fontSize: '7px' }} fill="var(--muted)">1</text>
-    <text x=${W - 14} y=${H - 1} style=${{ fontSize: '7px' }} fill="var(--muted)">${diasMes}</text>
+    ${diasMarcados.map(d => html`<text key=${'d' + d} x=${d === 1 ? PL + 1 : d === diasMes ? W - PR - 1 : X(d - 1)}
+      y=${H - 5} textAnchor=${d === 1 ? 'start' : d === diasMes ? 'end' : 'middle'}
+      style=${{ fontSize: '7px', fontWeight: hoyDia === d ? 800 : 400 }} fill=${hoyDia === d ? 'var(--accent)' : 'var(--muted)'}>${d}</text>`)}
   </svg>`;
 }
 

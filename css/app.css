@@ -58,7 +58,12 @@ input, select, textarea {
   padding: 10px 12px; outline: none; width: 100%; min-width: 0;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
-input[type="datetime-local"], input[type="date"] { min-height: 42px; }
+/* Fecha/hora: caja compacta (width auto) y fuente un paso menor. Los campos
+   internos de date/datetime tienen un mínimo que no se encoge; con la fuente
+   grande del sistema la caja se salía del ancho del celular y se truncaba. */
+input[type="datetime-local"], input[type="date"] {
+  min-height: 42px; width: auto; max-width: 100%; font-size: 14px;
+}
 ::placeholder { color: var(--muted); opacity: .7; }
 
 .num { font-variant-numeric: tabular-nums; }
