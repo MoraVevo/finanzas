@@ -6,7 +6,7 @@ import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-
 import fin from '../db.js';
 import { useStore, nav, recargar, toast, getState } from '../store.js';
 import { convertir, categoriasFrecuentes, motivosRecientes, saldoCuenta, TIPOS_CUENTA } from '../model.js';
-import { Teclado, PickerCuentas, GridCategorias, InputEtiquetas, SelectorFecha, Comprobantes } from '../ui.js';
+import { Teclado, PickerCuentas, GridCategorias, InputEtiquetas, SelectorFecha, Comprobantes, Segmentado } from '../ui.js';
 import { uid, isoLocal, textoAEntero, fmtConMoneda, monedaInfo, comprimirImagen } from '../util.js';
 
 const ETIQUETA_TIPO = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia' };
@@ -189,10 +189,7 @@ export default function Agregar({ txId }) {
         <button class="btn-icono" onClick=${() => nav(getState().routeAnterior || '#/')}>✕</button>
         ${datos.editando && html`<button class="btn-icono" style=${{ color: 'var(--gasto)' }} onClick=${eliminar}>🗑️</button>`}
       </div>
-      <div class="segmentado" style=${{ marginTop: '10px' }}>
-        ${['gasto', 'ingreso', 'transferencia'].map(t => html`
-          <button key=${t} class=${datos.tipo === t ? 'sel' : ''} onClick=${() => cambiarTipo(t)}>${ETIQUETA_TIPO[t]}</button>`)}
-      </div>
+      <${Segmentado} opciones=${[['gasto', 'Gasto'], ['ingreso', 'Ingreso'], ['transferencia', 'Transferencia']]} valor=${datos.tipo} onChange=${cambiarTipo} />
     </div>
 
     <div class="pa-scroll">

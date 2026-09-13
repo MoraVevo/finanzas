@@ -6,7 +6,7 @@ import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-
 import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
 import { statsMes, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraMes, TIPOS_CUENTA } from '../model.js';
-import { Sheet, PickerCuentas, GridCategorias } from '../ui.js';
+import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
 import { fmtConMoneda, fmtMonto, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
 export default function Estadisticas() {
@@ -24,10 +24,7 @@ export default function Estadisticas() {
 
   return html`<div class="vista">
     <div class="cabecera"><h1>Estadísticas</h1></div>
-    <div class="segmentado" style=${{ marginBottom: '12px' }}>
-      <button class=${vista === 'mes' ? 'sel' : ''} onClick=${() => setVista('mes')}>Este mes</button>
-      <button class=${vista === 'flujo' ? 'sel' : ''} onClick=${() => setVista('flujo')}>Flujo y futuro</button>
-    </div>
+    <${Segmentado} opciones=${[['mes', 'Este mes'], ['flujo', 'Flujo y futuro']]} valor=${vista} onChange=${setVista} />
     ${vista === 'mes'
       ? html`<${VistaMes} S=${S} todo=${todo} />`
       : html`<${VistaFlujo} S=${S} todo=${todo} />`}
@@ -179,10 +176,7 @@ function VistaFlujo({ S, todo }) {
         ${nombreScope ? `Hoy en ${nombreScope}` : 'Hoy tienes'}
       </div>
       <div class="num" style=${{ fontSize: '30px', fontWeight: 800 }}>${fmtConMoneda(fl.balanceHoy, principal)}</div>
-      <div class="segmentado" style=${{ marginTop: '12px' }}>
-        ${HORIZONTES.map(([m, t]) => html`<button key=${m} class=${horizonte === m ? 'sel' : ''}
-          onClick=${() => setHorizonte(m)}>Proyectar ${t}</button>`)}
-      </div>
+      <${Segmentado} opciones=${HORIZONTES.map(([m, t]) => [m, 'Proyectar ' + t])} valor=${horizonte} onChange=${setHorizonte} />
     </div>
 
     <div class="stats-grid-3">
@@ -197,10 +191,7 @@ function VistaFlujo({ S, todo }) {
     </div>
 
     <div class="tarjeta">
-      <div class="segmentado" style=${{ marginBottom: '10px' }}>
-        ${[['linea', 'Línea'], ['pie', 'Pie'], ['barras', 'Barras']].map(([v, t]) => html`
-          <button key=${v} class=${grafica === v ? 'sel' : ''} onClick=${() => setGrafica(v)}>${t}</button>`)}
-      </div>
+      <${Segmentado} opciones=${[['linea', 'Línea'], ['pie', 'Pie'], ['barras', 'Barras']]} valor=${grafica} onChange=${setGrafica} />
       ${grafica === 'linea' && html`<div>
         <h3 style=${{ fontSize: '11px' }}>${nombreScope ? `${nombreScope} en el tiempo` : 'Tu patrimonio en el tiempo'}</h3>
         <${ChartFlujo} fl=${fl} principal=${principal} />
@@ -364,11 +355,8 @@ function EditorFuturo({ f, S, cerrar }) {
   };
 
   return html`<div>
-    <div class="segmentado" style=${{ marginBottom: '10px' }}>
-      <button class=${d.tipo === 'ingreso' ? 'sel' : ''} onClick=${() => set({ tipo: 'ingreso', categoria: null })}>Ingreso</button>
-      <button class=${d.tipo === 'gasto' ? 'sel' : ''} onClick=${() => set({ tipo: 'gasto', categoria: null })}>Gasto</button>
-      <button class=${d.tipo === 'transferencia' ? 'sel' : ''} onClick=${() => set({ tipo: 'transferencia', categoria: null })}>Transferencia</button>
-    </div>
+    <${Segmentado} opciones=${[['ingreso', 'Ingreso'], ['gasto', 'Gasto'], ['transferencia', 'Transferencia']]}
+      valor=${d.tipo} onChange=${t => set({ tipo: t, categoria: null })} />
     <div style=${{ display: 'grid', gap: '8px' }}>
       ${d.tipo !== 'transferencia' && html`<input placeholder="Nombre (ej. Salario, Alquiler…)" value=${d.nombre}
         onInput=${e => set({ nombre: e.target.value })} />`}
@@ -765,15 +753,17 @@ const fmtFechaCorta = f => {
   return `${d.getDate()} ${['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][d.getMonth()]}`;
 };
 
-/* ---------- Tarjeta carrusel: Día | Estructura | Fijos | Margen ----------
+const diasMesDe = clave => new Date(+clave.slice(0, 4), +clave.slice(5, 7), 0).getDate();
+
+/* ---------- Tarjeta carrusel: Día / Estructura / Fijos ----------
    Se puede deslizar horizontalmente o tocar las pestañas. La clasificación
    fijo/variable viene de estructuraMes (transacciones reales vs reglas fijas). */
 function TarjetaDia({ st, est, clave, principal }) {
-  const VISTAS = [['dia', 'Día'], ['estructura', 'Estructura'], ['cobertura', 'Fijos'], ['margen', 'Margen']];
+  const VISTAS = [['dia', 'Día'], ['estructura', 'Estructura'], ['cobertura', 'Fijos']];
   const orden = VISTAS.map(v => v[0]);
   const [vista, setVista] = useState('dia');
   const cardRef = useRef(null);
-  // listeners nativos directos: gestos fiables en iOS (mismo patrón que las asas)
+  // swipe nativo directo: gestos fiables en iOS
   useEffect(() => {
     const card = cardRef.current;
     if (!card) return;
@@ -798,67 +788,58 @@ function TarjetaDia({ st, est, clave, principal }) {
     };
   }, []);
 
-  const TITULOS = { dia: 'Gasto por día', estructura: 'Fijo vs variable · este mes', cobertura: 'Cobertura de tus fijos', margen: 'Margen variable · potencial de ahorro' };
+  const TITULOS = { dia: 'Gasto por día', estructura: 'Fijo vs variable · este mes', cobertura: 'Cobertura de tus fijos' };
+  const idx = Math.max(0, orden.indexOf(vista));
   const r = est ? Math.round(est.fijoOut ? est.fijoIn / est.fijoOut * 100 : 0) : 0;
-  const margen = est ? est.varIn - est.varOut : 0;
   const barra = (nom, val, color, maxV) => html`<div key=${nom} class="barra-fila">
     <div class="info"><span style=${{ fontSize: '12.5px' }}>${nom}</span><span class="num">${fmtConMoneda(val, principal)}</span></div>
     <div class="pista"><div class="lleno" style=${{ width: (val / maxV * 100) + '%', background: color }}></div></div>
   </div>`;
+  const maxV = Math.max(1, est.fijoIn, est.varIn, est.fijoOut, est.varOut);
 
   return html`<div class="tarjeta" ref=${cardRef} style=${{ touchAction: 'pan-y' }}>
     <h3>${TITULOS[vista]}</h3>
-    <div class="chips-scroll" style=${{ marginBottom: '10px' }}>
-      ${VISTAS.map(([v, t]) => html`<button key=${v} class=${'chip' + (vista === v ? ' sel' : '')}
-        style=${{ padding: '5px 11px', fontSize: '12px' }} onClick=${() => setVista(v)}>${t}</button>`)}
-    </div>
-
-    ${vista === 'dia' && html`<${ChartDias} porDia=${st.porDia} diasMes=${diasMesDe(clave)} max=${Math.max(1, ...st.porDia.map(d => d.monto))} principal=${principal} />`}
-
-    ${vista === 'estructura' && html`<div>
-      ${barra('Ingresos fijos', est.fijoIn, 'var(--ingreso)', Math.max(1, est.fijoIn, est.varIn, est.fijoOut, est.varOut))}
-      ${barra('Ingresos variables', est.varIn, 'var(--ingreso)', Math.max(1, est.fijoIn, est.varIn, est.fijoOut, est.varOut))}
-      ${barra('Gastos fijos', est.fijoOut, 'var(--gasto)', Math.max(1, est.fijoIn, est.varIn, est.fijoOut, est.varOut))}
-      ${barra('Gastos variables', est.varOut, 'var(--gasto)', Math.max(1, est.fijoIn, est.varIn, est.fijoOut, est.varOut))}
-      <div class="dato-cuenta" style=${{ marginTop: '6px' }}>
-        ${est.varOut > est.fijoOut && est.fijoOut > 0 ? 'Tus gastos fijos son bajos: lo fuerte está en lo variable — ahí está tu espacio de ahorro.'
-          : est.fijoOut > est.varOut && est.fijoOut > 0 ? 'Tus gastos fijos dominan el mes: son tu base a cubrir sí o sí.'
-          : 'Sin gastos fijos registrados este mes.'}
-      <//>
-    <//>`}
-
-    ${vista === 'cobertura' && html`<div style=${{ textAlign: 'center', padding: '8px 0 4px' }}>
-      ${!est.tieneReglas && html`<div class="vacio">Configura tus ingresos y gastos fijos en Inicio (＋ Fijos) para ver este análisis.</div>`}
-      ${est.tieneReglas && est.fijoOut === 0 && html`<div class="vacio">Este mes no tuviste gastos fijos: tus ingresos fijos quedaron enteros.</div>`}
-      ${est.tieneReglas && est.fijoOut > 0 && html`<div>
-        <div style=${{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>Tus ingresos fijos cubren</div>
-        <div class="num" style=${{ fontSize: '34px', fontWeight: 800, color: r >= 100 ? 'var(--ingreso)' : r >= 80 ? 'var(--warn)' : 'var(--gasto)' }}>${r}%</div>
-        <div style=${{ fontSize: '11.5px', color: 'var(--muted)', marginBottom: '8px' }}>de tus gastos fijos (${fmtConMoneda(est.fijoIn, principal)} / ${fmtConMoneda(est.fijoOut, principal)})</div>
-        <div class="barra-fila"><div class="pista"><div class="lleno" style=${{ width: Math.min(100, r) + '%', background: r >= 100 ? 'var(--ingreso)' : r >= 80 ? 'var(--warn)' : 'var(--gasto)' }}></div></div></div>
-        <div class="dato-cuenta" style=${{ marginTop: '8px' }}>
-          ${r >= 100 ? 'Tus fijos se pagan solos: estabilidad sólida.'
-            : r >= 80 ? 'Casi: depende un poco de tus ingresos variables.'
-            : 'Riesgo: vives mayormente de ingresos variables; si fallan, tus fijos no se cubren.'}
+    <${Segmentado} opciones=${VISTAS} valor=${vista} onChange=${setVista} />
+    <div class="carrusel" style=${{ marginTop: '10px' }}>
+      <div class="carrusel-track" style=${{ transform: `translateX(-${idx * 100}%)` }}>
+        <div class="carrusel-slide">
+          <${ChartDias} porDia=${st.porDia} diasMes=${diasMesDe(clave)} max=${Math.max(1, ...st.porDia.map(d => d.monto))} principal=${principal} />
         <//>
-      <//>`}
-    <//>`}
-
-    ${vista === 'margen' && html`<div style=${{ textAlign: 'center', padding: '8px 0 4px' }}>
-      <div style=${{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>De tus ingresos variables, tras tus gastos variables, queda</div>
-      <div class="num" style=${{ fontSize: '30px', fontWeight: 800, color: margen >= 0 ? 'var(--ingreso)' : 'var(--gasto)', margin: '4px 0' }}>
-        ${fmtConMoneda(margen, principal, true)}
-      </div>
-      <div class="dato-cuenta">
-        ${est.varIn + est.varOut === 0 ? 'Sin movimientos variables este mes.'
-          : margen >= 0 ? `Ingresos variables ${fmtConMoneda(est.varIn, principal)} − gastos variables ${fmtConMoneda(est.varOut, principal)}. Ahí está tu espacio para ahorrar.`
-          : `Tus gastos variables superan tus ingresos variables por ${fmtConMoneda(-margen, principal)}.`}
+        <div class="carrusel-slide">
+          ${barra('Ingresos fijos', est.fijoIn, 'var(--ingreso)', maxV)}
+          ${barra('Ingresos variables', est.varIn, 'var(--ingreso)', maxV)}
+          ${barra('Gastos fijos', est.fijoOut, 'var(--gasto)', maxV)}
+          ${barra('Gastos variables', est.varOut, 'var(--gasto)', maxV)}
+          <div class="dato-cuenta" style=${{ marginTop: '6px' }}>
+            ${est.varOut > est.fijoOut && est.fijoOut > 0 ? 'Tus gastos fijos son bajos: lo fuerte está en lo variable — ahí está tu espacio de ahorro.'
+              : est.fijoOut > est.varOut && est.fijoOut > 0 ? 'Tus gastos fijos dominan el mes: son tu base a cubrir sí o sí.'
+              : 'Sin gastos fijos registrados este mes.'}
+          <//>
+        <//>
+        <div class="carrusel-slide" style=${{ textAlign: 'center', padding: '8px 0 4px' }}>
+          ${!est.tieneReglas && html`<div class="vacio">Configura tus ingresos y gastos fijos en Inicio (＋ Fijos) para ver este análisis.</div>`}
+          ${est.tieneReglas && est.fijoOut === 0 && html`<div class="vacio">Este mes no tuviste gastos fijos: tus ingresos fijos quedaron enteros.</div>`}
+          ${est.tieneReglas && est.fijoOut > 0 && html`<div>
+            <div style=${{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>Tus ingresos fijos cubren</div>
+            <div class="num" style=${{ fontSize: '34px', fontWeight: 800, color: r >= 100 ? 'var(--ingreso)' : r >= 80 ? 'var(--warn)' : 'var(--gasto)' }}>${r}%</div>
+            <div style=${{ fontSize: '11.5px', color: 'var(--muted)', marginBottom: '8px' }}>de tus gastos fijos (${fmtConMoneda(est.fijoIn, principal)} / ${fmtConMoneda(est.fijoOut, principal)})</div>
+            <div class="barra-fila"><div class="pista"><div class="lleno" style=${{ width: Math.min(100, r) + '%', background: r >= 100 ? 'var(--ingreso)' : r >= 80 ? 'var(--warn)' : 'var(--gasto)' }}></div></div></div>
+            <div class="dato-cuenta" style=${{ marginTop: '8px' }}>
+              ${r >= 100 ? 'Tus fijos se pagan solos: estabilidad sólida.'
+                : r >= 80 ? 'Casi: depende un poco de tus ingresos variables.'
+                : 'Riesgo: vives mayormente de ingresos variables; si fallan, tus fijos no se cubren.'}
+            <//>
+          <//>`}
+        <//>
       <//>
-    <//>`}
-
-    <div class="dato-cuenta" style=${{ marginTop: '8px', textAlign: 'right' }}>Desliza para cambiar</div>
+    <//>
+    <div class="carrusel-puntos">
+      ${orden.map(v => html`<button key=${v} type="button" aria-label=${TITULOS[v]}
+        class=${'carrusel-punto' + (v === vista ? ' activo' : '')} onClick=${() => setVista(v)}><//>`)}
+    <//>
   </div>`;
 }
-const diasMesDe = clave => new Date(+clave.slice(0, 4), +clave.slice(5, 7), 0).getDate();
+
 
 /* ---------- Gráficas de la vista Mes ---------- */
 function ChartDias({ porDia, diasMes, max, principal }) {

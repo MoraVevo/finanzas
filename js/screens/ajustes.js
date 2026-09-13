@@ -3,7 +3,7 @@
 import { html, useState, useEffect, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, recargar, toast, nav } from '../store.js';
-import { Sheet, SelectorMoneda, EmojiPicker } from '../ui.js';
+import { Sheet, SelectorMoneda, EmojiPicker, Segmentado } from '../ui.js';
 import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.js';
 import { exportarCSV, exportarJSON, importarJSON, copiarParaIA } from '../export.js';
 
@@ -115,10 +115,7 @@ function PanelCategorias({ store: S, cerrar }) {
   const [edit, setEdit] = useState(null);
   const lista = S.categorias.filter(c => c.tipo === tipo).sort((a, b) => a.nombre.localeCompare(b.nombre));
   return html`<${Sheet} titulo="Categorías" onClose=${cerrar}>
-    <div class="segmentado" style=${{ marginBottom: '12px' }}>
-      <button class=${tipo === 'gasto' ? 'sel' : ''} onClick=${() => setTipo('gasto')}>Gastos</button>
-      <button class=${tipo === 'ingreso' ? 'sel' : ''} onClick=${() => setTipo('ingreso')}>Ingresos</button>
-    </div>
+    <${Segmentado} opciones=${[['gasto', 'Gastos'], ['ingreso', 'Ingresos']]} valor=${tipo} onChange=${setTipo} />
     ${lista.map(c => html`<div key=${c.id} class="fila" onClick=${() => setEdit(c)}>
       <span class="emoji">${c.emoji}</span>
       <div class="cuerpo"><div class="titulo">${c.nombre}</div></div>
@@ -148,10 +145,7 @@ function EditorCategoria({ c, store: S, cerrar }) {
     <div style=${{ textAlign: 'center', fontSize: '44px', marginBottom: '8px' }}>${f.emoji}</div>
     <${EmojiPicker} valor=${f.emoji} onPick=${emoji => setF({ ...f, emoji })} />
     <input style=${{ marginTop: '10px' }} placeholder="Nombre" value=${f.nombre} onInput=${e => setF({ ...f, nombre: e.target.value })} />
-    <div class="segmentado" style=${{ marginTop: '8px' }}>
-      <button class=${f.tipo === 'gasto' ? 'sel' : ''} onClick=${() => setF({ ...f, tipo: 'gasto' })}>Gasto</button>
-      <button class=${f.tipo === 'ingreso' ? 'sel' : ''} onClick=${() => setF({ ...f, tipo: 'ingreso' })}>Ingreso</button>
-    </div>
+    <${Segmentado} opciones=${[['gasto', 'Gasto'], ['ingreso', 'Ingreso']]} valor=${f.tipo} onChange=${t => setF({ ...f, tipo: t })} />
     <button class="btn btn-primario" style=${{ marginTop: '12px' }} onClick=${guardar}>Guardar</button>
     ${c.id && html`<button class="btn btn-rojo" style=${{ marginTop: '8px' }} onClick=${borrar}>Eliminar</button>`}
   </div>`;

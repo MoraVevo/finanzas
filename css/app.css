@@ -173,6 +173,35 @@ input[type="datetime-local"], input[type="date"] { min-height: 42px; }
 }
 .segmentado button.sel { background: var(--card); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.12); }
 
+/* Segmentado con pulgar deslizante */
+.seg {
+  position: relative; display: flex; background: var(--chip); border-radius: 12px; padding: 3px;
+  touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: grab;
+}
+.seg:active { cursor: grabbing; }
+.seg-thumb {
+  position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n));
+  background: var(--card); border-radius: 10px; box-shadow: 0 1px 5px rgba(0,0,0,.16);
+  transition: transform .25s cubic-bezier(.2,.9,.3,1);
+}
+.seg-thumb.sin-trans { transition: none; }
+.seg-btn {
+  position: relative; z-index: 1; flex: 1; padding: 8px 4px; border-radius: 10px;
+  font-size: 13.5px; font-weight: 700; color: var(--muted); transition: color .2s ease; white-space: nowrap;
+}
+.seg-btn.sel { color: var(--text); }
+
+/* Carrusel de vistas (tarjeta Día/Estructura/Fijos) */
+.carrusel { overflow: hidden; }
+.carrusel-track { display: flex; transition: transform .3s cubic-bezier(.2,.9,.3,1); }
+.carrusel-slide { min-width: 100%; padding: 0 2px; }
+.carrusel-puntos { display: flex; gap: 6px; justify-content: center; margin-top: 12px; }
+.carrusel-punto {
+  width: 6px; height: 6px; border-radius: 3px; background: var(--line); padding: 0;
+  transition: all .25s ease;
+}
+.carrusel-punto.activo { width: 20px; background: var(--accent); }
+
 /* ============ Pantalla Agregar ============ */
 /* height exacto (no min-height): el panel inferior queda anclado al borde bajo
    del viewport y solo el área de campos (pa-scroll) se desplaza. */

@@ -4,7 +4,7 @@ import { html, useState, useEffect } from '../../vendor/preact-standalone.module
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
 import { patrimonio, saldoConvertido, saldoCuenta, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo } from '../model.js';
-import { FilaTx, Sheet } from '../ui.js';
+import { FilaTx, Sheet, Segmentado } from '../ui.js';
 import { fmtConMoneda, fmtFecha, claveMesActual, rangoMes, fmtMesLargo, uid, textoAEntero, enteroATexto, isoDia } from '../util.js';
 
 export default function Hoy() {
@@ -204,10 +204,7 @@ function EditorFijo({ f, S, cerrar }) {
   };
 
   return html`<div>
-    <div class="segmentado" style=${{ marginBottom: '10px' }}>
-      <button class=${d.tipo === 'ingreso' ? 'sel' : ''} onClick=${() => set({ tipo: 'ingreso' })}>💰 Ingreso fijo</button>
-      <button class=${d.tipo === 'gasto' ? 'sel' : ''} onClick=${() => set({ tipo: 'gasto' })}>🔻 Gasto fijo</button>
-    </div>
+    <${Segmentado} opciones=${[['ingreso', 'Ingreso fijo'], ['gasto', 'Gasto fijo']]} valor=${d.tipo} onChange=${t => set({ tipo: t })} />
     <div style=${{ display: 'grid', gap: '8px' }}>
       <input placeholder="Nombre (Salario, Alquiler, Celular…)" value=${d.nombre} onInput=${e => set({ nombre: e.target.value })} />
       <div style=${{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -220,10 +217,7 @@ function EditorFijo({ f, S, cerrar }) {
       <//>
       <div>
         <div class="dato-cuenta">Se repite</div>
-        <div class="segmentado" style=${{ marginTop: '4px' }}>
-          ${[['mensual', 'Cada mes'], ['quincenal', 'Quincenal'], ['semanal', 'Semanal']].map(([v, t]) => html`
-            <button key=${v} class=${d.frecuencia === v ? 'sel' : ''} onClick=${() => set({ frecuencia: v })}>${t}</button>`)}
-        <//>
+        <${Segmentado} opciones=${[['mensual', 'Cada mes'], ['quincenal', 'Quincenal'], ['semanal', 'Semanal']]} valor=${d.frecuencia} onChange=${v => set({ frecuencia: v })} />
       <//>
       ${d.frecuencia === 'semanal' ? html`<div>
         <div class="dato-cuenta">Día de la semana</div>

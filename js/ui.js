@@ -97,6 +97,65 @@ export function Teclado({ onTecla }) {
   </div>`;
 }
 
+/* ---------- Segmentado con pulgar deslizante (se toca Y se arrastra) ----------
+   Gestos con listeners nativos directos: fiables en iOS. */
+export function Segmentado({ opciones, valor, onChange }) {
+  const ref = useRef(null);
+  const movio = useRef(false);
+  const drag = useRef(null); // { idx, iniX, dx, w }
+  const [, forzar] = useState(0);
+  const n = opciones.length;
+  const idx = Math.max(0, opciones.findIndex(o => o[0] === valor));
+
+  useEffect(() => {
+    const seg = ref.current;
+    if (!seg) return;
+    const abajo = e => {
+      try { seg.setPointerCapture(e.pointerId); } catch { /* sin captura: igual funciona */ }
+      movio.current = false;
+      const r = seg.getBoundingClientRect();
+      const i = Math.max(0, opciones.findIndex(o => o[0] === valor));
+      drag.current = { idx: i, iniX: e.clientX, dx: 0, w: (r.width - 6) / n || 1 };
+      forzar(f => f + 1);
+    };
+    const mover = e => {
+      const g = drag.current;
+      if (!g) return;
+      g.dx = e.clientX - g.iniX;
+      if (Math.abs(g.dx) > 6) movio.current = true;
+      forzar(f => f + 1);
+    };
+    const soltar = () => {
+      const g = drag.current;
+      if (!g) return;
+      const objetivo = Math.min(n - 1, Math.max(0, Math.round(g.idx + g.dx / g.w)));
+      drag.current = null;
+      forzar(f => f + 1);
+      if (objetivo !== g.idx) onChange(opciones[objetivo][0]);
+    };
+    seg.addEventListener('pointerdown', abajo);
+    seg.addEventListener('pointermove', mover);
+    seg.addEventListener('pointerup', soltar);
+    seg.addEventListener('pointercancel', soltar);
+    return () => {
+      seg.removeEventListener('pointerdown', abajo);
+      seg.removeEventListener('pointermove', mover);
+      seg.removeEventListener('pointerup', soltar);
+      seg.removeEventListener('pointercancel', soltar);
+    };
+  }, [valor, opciones, onChange]);
+
+  const g = drag.current;
+  const base = g ? g.idx : idx;
+  const dx = g ? g.dx : 0;
+  return html`<div class="seg" ref=${ref} style=${{ '--n': n }}>
+    <div class=${'seg-thumb' + (g ? ' sin-trans' : '')} style=${{ transform: `translateX(calc(${base * 100}% + ${dx}px))` }}></div>
+    ${opciones.map(([v, t]) => html`<button key=${v} type="button"
+      class=${'seg-btn' + (v === valor ? ' sel' : '')}
+      onClick=${() => { if (movio.current) { movio.current = false; return; } onChange(v); }}>${t}</button>`)}
+  </div>`;
+}
+
 /* ---------- Fila de transacción (listas) ---------- */
 export function FilaTx({ tx, cuentas, categorias, onClick }) {
   const cta = cuentas.find(c => c.id === tx.cuenta);

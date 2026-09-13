@@ -4,7 +4,7 @@ import { html, useState, useEffect } from '../../vendor/preact-standalone.module
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
 import { saldoCuenta, saldoConvertido, convertir, TIPOS_CUENTA } from '../model.js';
-import { Sheet, SelectorMoneda, FilaTx } from '../ui.js';
+import { Sheet, SelectorMoneda, FilaTx, Segmentado } from '../ui.js';
 import { uid, textoAEntero, enteroATexto, fmtConMoneda, isoLocal } from '../util.js';
 
 export default function Cuentas() {
@@ -259,10 +259,7 @@ function EditorCuenta({ c, S, cerrar }) {
         <//>
         <div>
           <div class="dato-cuenta">Tipo de crédito</div>
-          <div class="segmentado" style=${{ marginTop: '4px' }}>
-            <button class=${f.bolsa === 'individual' ? 'sel' : ''} onClick=${() => set({ bolsa: 'individual' })}>Individual</button>
-            <button class=${f.bolsa === 'compartida' ? 'sel' : ''} onClick=${() => set({ bolsa: 'compartida' })}>Bolsa compartida</button>
-          <//>
+          <${Segmentado} opciones=${[['individual', 'Individual'], ['compartida', 'Bolsa compartida']]} valor=${f.bolsa} onChange=${b => set({ bolsa: b })} />
           <div class="dato-cuenta" style=${{ marginTop: '4px' }}>${f.bolsa === 'compartida'
             ? 'El límite es el crédito total del banco, compartido entre tus tarjetas.'
             : 'El límite pertenece solo a esta tarjeta.'}</div>
