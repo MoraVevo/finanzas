@@ -272,23 +272,13 @@ function VistaRango({ S, todo }) {
       <div class="stat-box"><div class="etq">Neto</div><div class="val" style=${{ color: st.neto >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${fmtConMoneda(st.neto, principal, true)}</div></div>
     </div>
 
-    <div class="tarjeta">
-      <h3>Últimos 3 meses</h3>
-      <div class="grupo-dia" style=${{ paddingTop: '2px' }}>
-        <span class="fecha">${ahorro3 >= 0 ? 'Ahorro' : 'Desahorro'}</span>
-        <span class="num" style=${{ fontWeight: 800, color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : '−'}${fmtConMoneda(Math.abs(ahorro3), principal)}</span>
-      </div>
-      <div class="grupo-dia">
-        <span class="fecha">Gasto promedio por día</span>
-        <span class="num" style=${{ fontWeight: 700 }}>${fmtConMoneda(Math.round(promDia), principal)}<span style=${{ color: 'var(--muted)', fontSize: '12px', fontWeight: 600 }}> / día</span></span>
-      </div>
-      <div class="grupo-dia">
-        <span class="fecha">Mayor categoría</span>
-        <span class="num" style=${{ fontWeight: 700 }}>${catTop ? `${catTop.emoji} ${catTop.nombre}` : '—'}</span>
-      </div>
-      ${catTop && html`<div class="dato-cuenta" style=${{ textAlign: 'center', marginTop: '2px' }}>
-        ${fmtConMoneda(catTop.monto, principal)} · ${Math.round(catTop.monto / st3.gasto * 100)}% del gasto
-      <//>`}
+    <div class="stats-grid-3">
+      <div class="stat-box"><div class="etq">${ahorro3 >= 0 ? 'Ahorro' : 'Desahorro'}</div>
+        <div class="val" style=${{ color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : '−'}${fmtConMoneda(Math.abs(ahorro3), principal)}</div></div>
+      <div class="stat-box"><div class="etq">Gasto / día</div>
+        <div class="val">${fmtConMoneda(Math.round(promDia), principal)}</div></div>
+      <div class="stat-box"><div class="etq">Mayor gasto</div>
+        <div class="val" style=${{ fontSize: '13px', lineHeight: 1.35 }}>${catTop ? `${catTop.emoji} ${catTop.nombre}` : '—'}</div></div>
     </div>
 
     <${TarjetaDia} serie=${serie} est=${est} etiqueta=${etiqueta} principal=${principal} />
