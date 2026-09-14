@@ -5,6 +5,7 @@ import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
 import { patrimonio, saldoConvertido, saldoCuenta, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo } from '../model.js';
 import { FilaTx, Sheet, Segmentado } from '../ui.js';
+import { IconoCuenta } from '../iconos.js';
 import { fmtConMoneda, fmtFecha, claveMesActual, rangoMes, fmtMesLargo, uid, textoAEntero, enteroATexto, isoDia } from '../util.js';
 
 export default function Hoy() {
@@ -63,7 +64,7 @@ export default function Hoy() {
       <div class="chips-scroll" style=${{ marginTop: '12px', justifyContent: 'center' }}>
         ${S.cuentas.filter(c => !c.archivada).map(c => html`
           <button key=${c.id} class="chip" onClick=${() => nav('#/cuentas')}>
-            ${TIPOS_CUENTA[c.tipo].emoji} ${c.nombre}
+            <${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}
             <span class="num" style=${{ color: saldoConvertido(c, txs, S.tasas, principal) < 0 ? 'var(--gasto)' : 'inherit' }}>
               ${fmtConMoneda(saldoCuenta(c, txs, S.tasas), c.moneda)}
             </span>
@@ -168,7 +169,7 @@ function PanelFijos({ S, cerrar }) {
       return html`<div key=${f.id} class="fila" onClick=${() => setEdit(f)}>
         <div class="cuerpo">
           <div class="titulo">${f.nombre || (f.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo')}</div>
-          <div class="sub">${FRECV[f.frecuencia] || f.frecuencia}${f.frecuencia !== 'quincenal' ? ' · día ' + f.dia : ''} · ${f.moneda}${fu ? ` · ${TIPOS_CUENTA[fu.tipo].emoji} ${fu.nombre}` : ''}${f.activa === false ? ' · inactivo' : ''}</div>
+          <div class="sub">${FRECV[f.frecuencia] || f.frecuencia}${f.frecuencia !== 'quincenal' ? ' · día ' + f.dia : ''} · ${f.moneda}${fu ? html` · <${IconoCuenta} tipo=${fu.tipo} /> ${fu.nombre}` : ''}${f.activa === false ? ' · inactivo' : ''}</div>
         </div>
         <div class="monto num ${f.tipo === 'ingreso' ? 'm-ingreso' : 'm-gasto'}">${f.tipo === 'ingreso' ? '+' : '−'}${fmtConMoneda(f.monto, f.moneda)}</div>
       </div>`;
@@ -234,7 +235,7 @@ function EditorFijo({ f, S, cerrar }) {
           <button class=${'chip' + (!d.fuente ? ' sel' : '')} onClick=${() => set({ fuente: null })}>Líquido</button>
           ${S.cuentas.filter(c => !c.archivada).map(c => html`<button key=${c.id}
             class=${'chip' + (d.fuente === c.id ? ' sel' : '')}
-            onClick=${() => set({ fuente: c.id })}>${TIPOS_CUENTA[c.tipo].emoji} ${c.nombre}</button>`)}
+            onClick=${() => set({ fuente: c.id })}><${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}</button>`)}
         <//>
         ${fuentePasiva && html`<div class="dato-cuenta" style=${{ marginTop: '4px' }}>
           No descuenta tu disponible: suma a la deuda de ${fuenteObj.nombre} y se paga

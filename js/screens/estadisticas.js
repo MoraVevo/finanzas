@@ -8,6 +8,7 @@ import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
 import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
+import { IconoCuenta } from '../iconos.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
 const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -252,6 +253,15 @@ function VistaRango({ S, todo }) {
   const maxCat = Math.max(1, ...st.porCategoria.map(c => c.monto));
   const maxTend = Math.max(1, ...tend.map(m => Math.max(m.gasto, m.ingreso)));
   const serie = serieGasto(desde, hasta, st.porDia);
+  // Indicadores informativos de ventana móvil: siempre los últimos 3 meses
+  // (90 días), sin que el usuario pueda cambiar el rango.
+  const hoyMS = +deISO(isoDia());
+  const desde3 = isoDia(new Date(hoyMS - 89 * 86400000)) + 'T00:00';
+  const hasta3 = isoDia(new Date(hoyMS + 86400000)) + 'T00:00';
+  const st3 = statsRango(desde3, hasta3, todo, S);
+  const ahorro3 = st3.ingreso - st3.gasto;
+  const promDia = st3.gasto / 90;
+  const catTop = st3.porCategoria[0];
 
   return html`<div>
     <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
@@ -261,8 +271,24 @@ function VistaRango({ S, todo }) {
       <div class="stat-box"><div class="etq">Ingreso</div><div class="val m-ingreso">${fmtConMoneda(st.ingreso, principal)}</div></div>
       <div class="stat-box"><div class="etq">Neto</div><div class="val" style=${{ color: st.neto >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${fmtConMoneda(st.neto, principal, true)}</div></div>
     </div>
-    <div class="dato-cuenta" style=${{ textAlign: 'center', marginTop: '-8px', marginBottom: '10px' }}>
-      ${etiqueta} · Montos en ${principal}. Transferencias entre tus cuentas no cuentan como gasto.
+
+    <div class="tarjeta">
+      <h3>Últimos 3 meses</h3>
+      <div class="grupo-dia" style=${{ paddingTop: '2px' }}>
+        <span class="fecha">${ahorro3 >= 0 ? 'Ahorro' : 'Desahorro'}</span>
+        <span class="num" style=${{ fontWeight: 800, color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : '−'}${fmtConMoneda(Math.abs(ahorro3), principal)}</span>
+      </div>
+      <div class="grupo-dia">
+        <span class="fecha">Gasto promedio por día</span>
+        <span class="num" style=${{ fontWeight: 700 }}>${fmtConMoneda(Math.round(promDia), principal)}<span style=${{ color: 'var(--muted)', fontSize: '12px', fontWeight: 600 }}> / día</span></span>
+      </div>
+      <div class="grupo-dia">
+        <span class="fecha">Mayor categoría</span>
+        <span class="num" style=${{ fontWeight: 700 }}>${catTop ? `${catTop.emoji} ${catTop.nombre}` : '—'}</span>
+      </div>
+      ${catTop && html`<div class="dato-cuenta" style=${{ textAlign: 'center', marginTop: '2px' }}>
+        ${fmtConMoneda(catTop.monto, principal)} · ${Math.round(catTop.monto / st3.gasto * 100)}% del gasto
+      <//>`}
     </div>
 
     <${TarjetaDia} serie=${serie} est=${est} etiqueta=${etiqueta} principal=${principal} />
@@ -309,7 +335,7 @@ function VistaRango({ S, todo }) {
     <div class="tarjeta">
       <h3>Cuentas · ahora</h3>
       ${S.cuentas.filter(c => !c.archivada).map(c => html`<div key=${c.id} class="fila">
-        <span class="emoji">${TIPOS_CUENTA[c.tipo].emoji}</span>
+        <span class="emoji"><${IconoCuenta} tipo=${c.tipo} /></span>
         <div class="cuerpo"><div class="titulo">${c.nombre}</div><div class="sub">${c.moneda}</div></div>
         <div class="monto num" style=${{ color: saldoConvertido(c, todo, S.tasas, principal) < 0 ? 'var(--gasto)' : 'inherit' }}>
           ${fmtConMoneda(saldoConvertido(c, todo, S.tasas, principal), principal)}
@@ -369,7 +395,7 @@ function VistaFlujo({ S, todo }) {
       <button class=${'chip' + (!cuentaScope ? ' sel' : '')} onClick=${() => setCuentaScope(null)}>🌏 Patrimonio</button>
       ${S.cuentas.filter(c => !c.archivada).map(c => html`
         <button key=${c.id} class=${'chip' + (cuentaScope === c.id ? ' sel' : '')} onClick=${() => setCuentaScope(c.id)}>
-          ${TIPOS_CUENTA[c.tipo].emoji} ${c.nombre}
+          <${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}
         </button>`)}
     </div>
 
@@ -574,15 +600,15 @@ function EditorFuturo({ f, S, cerrar }) {
       ${d.tipo === 'transferencia' ? html`<div>
         <div class="dato-cuenta">Desde → hacia</div>
         <div class="chips-scroll" style=${{ marginTop: '6px' }}>
-          <button class="chip" onClick=${() => setPicker('cuenta')}>${cuentaObj ? `${TIPOS_CUENTA[cuentaObj.tipo].emoji} ${cuentaObj.nombre}` : '¿Desde qué cuenta?'}</button>
+          <button class="chip" onClick=${() => setPicker('cuenta')}>${cuentaObj && html`<${IconoCuenta} tipo=${cuentaObj.tipo} /> `}${cuentaObj ? cuentaObj.nombre : '¿Desde qué cuenta?'}</button>
           <span style=${{ alignSelf: 'center', color: 'var(--muted)' }}>→</span>
-          <button class="chip" onClick=${() => setPicker('destino')}>${destinoObj ? `${TIPOS_CUENTA[destinoObj.tipo].emoji} ${destinoObj.nombre}` : '¿Hacia dónde?'}</button>
+          <button class="chip" onClick=${() => setPicker('destino')}>${destinoObj && html`<${IconoCuenta} tipo=${destinoObj.tipo} /> `}${destinoObj ? destinoObj.nombre : '¿Hacia dónde?'}</button>
         <//>
       <//>` : html`<div>
         <div class="dato-cuenta">Cuenta (opcional)</div>
         <div class="chips-scroll" style=${{ marginTop: '6px' }}>
           <button class="chip" onClick=${() => setPicker('cuenta')}>
-            ${cuentaObj ? `${TIPOS_CUENTA[cuentaObj.tipo].emoji} ${cuentaObj.nombre}` : 'Cualquiera'}
+            ${cuentaObj && html`<${IconoCuenta} tipo=${cuentaObj.tipo} /> `}${cuentaObj ? cuentaObj.nombre : 'Cualquiera'}
           </button>
           ${d.cuenta && html`<button class="chip" onClick=${() => set({ cuenta: null })}>✕</button>`}
         <//>

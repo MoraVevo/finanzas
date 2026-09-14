@@ -5,8 +5,9 @@
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast, getState } from '../store.js';
-import { convertir, categoriasFrecuentes, motivosRecientes, saldoCuenta, TIPOS_CUENTA } from '../model.js';
+import { convertir, categoriasFrecuentes, motivosRecientes, saldoCuenta } from '../model.js';
 import { Teclado, PickerCuentas, GridCategorias, InputEtiquetas, SelectorFecha, Comprobantes, Segmentado } from '../ui.js';
+import { IconoCuenta } from '../iconos.js';
 import { uid, isoLocal, textoAEntero, fmtConMoneda, monedaInfo, comprimirImagen } from '../util.js';
 
 const ETIQUETA_TIPO = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia' };
@@ -185,6 +186,9 @@ export default function Agregar({ txId }) {
 
   const simbolo = monedaInfo(moneda).simbolo;
 
+  // transform del swipe SOLO durante el gesto: un ancestro transformado (aunque
+  // sea identidad) vuelve los sheets fijos relativos a él (overlay recortado y
+  // anclado al fondo de la página en vez de a la pantalla).
   return html`<div class="pantalla-agregar">
     <div class="pa-sup">
       <div style=${{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -196,19 +200,21 @@ export default function Agregar({ txId }) {
     </div>
 
     <div class="pa-scroll" onClickCapture=${() => setTeclado(false)}>
-      <div class=${arrastre ? '' : 'trans-vista'} style=${{
-      transform: `translateX(${-(arrastre ? arrastre.frac : 0) * 15}%)`,
-      opacity: 1 - Math.abs(arrastre ? arrastre.frac : 0) * 0.35
-    }}>
+      <div class=${arrastre ? '' : 'trans-vista'} style=${arrastre ? {
+      transform: `translateX(${-(arrastre.frac) * 15}%)`,
+      opacity: 1 - Math.abs(arrastre.frac) * 0.35
+    } : null}>
       <div class="pa-seccion">
         <label>${datos.tipo === 'transferencia' ? 'Desde' : 'Cuenta'}</label>
         <div class="chips-scroll">
           <button class="chip" onClick=${() => setPicker('cuenta')}>
-            ${cuentaObj ? `${TIPOS_CUENTA[cuentaObj.tipo].emoji} ${cuentaObj.nombre} · ${fmtConMoneda(saldoCuenta(cuentaObj, txs, S.tasas), cuentaObj.moneda)}` : 'Elegir cuenta'}
+            ${cuentaObj && html`<${IconoCuenta} tipo=${cuentaObj.tipo} /> `}${cuentaObj
+              ? `${cuentaObj.nombre} · ${fmtConMoneda(saldoCuenta(cuentaObj, txs, S.tasas), cuentaObj.moneda)}`
+              : 'Elegir cuenta'}
           </button>
           ${datos.tipo === 'transferencia' && html`<span style=${{ alignSelf: 'center', color: 'var(--muted)', fontSize: '18px' }}>→</span>
             <button class="chip" onClick=${() => setPicker('destino')}>
-              ${destinoObj ? `${TIPOS_CUENTA[destinoObj.tipo].emoji} ${destinoObj.nombre}` : '¿Hacia dónde?'}
+              ${destinoObj && html`<${IconoCuenta} tipo=${destinoObj.tipo} /> `}${destinoObj ? destinoObj.nombre : '¿Hacia dónde?'}
             </button>`}
         </div>
         ${datos.tipo === 'transferencia' && destinoObj && html`<div class="dato-cuenta" style=${{ marginTop: '6px' }}>

@@ -71,3 +71,9 @@ img/                  íconos (gen-icons.ps1 los regenera)
 
 Ajustes → **Mis datos** → *Respaldo JSON*. Guarda el archivo en Archivos/iCloud.
 Recomendación: exportar una vez al mes. La importación restaura todo en un dispositivo nuevo.
+
+## Licencia
+
+**Todos los derechos reservados.** Este proyecto NO es open source: el código no puede
+copiarse, modificarse, redistribuirse ni usarse comercialmente sin autorización expresa
+del autor. Ver el archivo [LICENSE](LICENSE) para el texto completo y permisos especiales.

@@ -5,6 +5,7 @@ import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
 import { saldoCuenta, saldoConvertido, convertir, TIPOS_CUENTA } from '../model.js';
 import { Sheet, SelectorMoneda, FilaTx, Segmentado } from '../ui.js';
+import { IconoCuenta } from '../iconos.js';
 import { uid, textoAEntero, enteroATexto, fmtConMoneda, isoLocal } from '../util.js';
 
 export default function Cuentas() {
@@ -39,7 +40,7 @@ export default function Cuentas() {
 
     <div class="tarjeta" style=${{ paddingTop: '4px' }}>
       ${activas.map(c => html`<div key=${c.id} class="fila" onClick=${() => setDetalle(c)}>
-        <span class="emoji">${TIPOS_CUENTA[c.tipo].emoji}</span>
+        <span class="emoji"><${IconoCuenta} tipo=${c.tipo} /></span>
         <div class="cuerpo">
           <div class="titulo">${c.nombre}</div>
           <div class="sub">${[
@@ -60,7 +61,7 @@ export default function Cuentas() {
     ${archivadas.length > 0 && html`<div class="tarjeta">
       <h3>Archivadas</h3>
       ${archivadas.map(c => html`<div key=${c.id} class="fila" onClick=${() => setDetalle(c)}>
-        <span class="emoji">${TIPOS_CUENTA[c.tipo].emoji}</span>
+        <span class="emoji"><${IconoCuenta} tipo=${c.tipo} /></span>
         <div class="cuerpo"><div class="titulo">${c.nombre}</div></div>
         <button class="chip" onClick=${e => { e.stopPropagation(); reArchivar(c, false); }}>Restaurar</button>
       </div>`)}
@@ -226,7 +227,7 @@ function EditorCuenta({ c, S, cerrar }) {
   return html`<div>
     <div class="chips-scroll" style=${{ marginBottom: '10px' }}>
       ${Object.entries(TIPOS_CUENTA).map(([k, v]) => html`
-        <button key=${k} class=${'chip' + (f.tipo === k ? ' sel' : '')} onClick=${() => set({ tipo: k })}>${v.emoji} ${v.nombre}</button>`)}
+        <button key=${k} class=${'chip' + (f.tipo === k ? ' sel' : '')} onClick=${() => set({ tipo: k })}><${IconoCuenta} tipo=${k} /> ${v.nombre}</button>`)}
     </div>
     <div style=${{ display: 'grid', gap: '8px' }}>
       <input placeholder="Nombre (ej. BAC, Efectivo, Visa…)" value=${f.nombre} onInput=${e => set({ nombre: e.target.value })} />

@@ -2,6 +2,7 @@
 import { html, render, useEffect, Component } from '../vendor/preact-standalone.module.js';
 import fin from './db.js';
 import { useStore, recargar, nav } from './store.js';
+import { ICONOS_TAB } from './iconos.js';
 import Onboarding from './screens/onboarding.js';
 import Hoy from './screens/hoy.js';
 import Agregar from './screens/agregar.js';
@@ -74,21 +75,27 @@ function App() {
     <//>`;
   }
 
-  const tabs = [
-    ['#/', '🏠', 'Inicio'],
-    ['#/movimientos', '🧾', 'Movs'],
-    [null, '＋', ''],
-    ['#/estadisticas', '📊', 'Stats'],
-    ['#/cuentas', '💳', 'Cuentas'],
-  ];
+// Iconos de la barra en js/iconos.js. Sin texto: solo icono (evita mezclar
+// español/inglés en las etiquetas) + aria-label para accesibilidad.
+const tabs = [
+  ['#/', 'inicio', 'Inicio'],
+  ['#/movimientos', 'movs', 'Movs'],
+  [null, null, ''],
+  ['#/estadisticas', 'stats', 'Stats'],
+  ['#/cuentas', 'cuentas', 'Cuentas'],
+];
 
   return html`<div>
     ${pantalla}
-    <button class="fab" aria-label="Agregar transacción" onClick=${() => nav('#/agregar')}>＋</button>
+    <button class="fab" aria-label="Agregar transacción" onClick=${() => nav('#/agregar')}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" aria-hidden="true">
+        <path d="M12 5.2v13.6M5.2 12h13.6" />
+      </svg>
+    </button>
     <nav class="tabbar">
       ${tabs.map(([hash, ico, nom]) => hash
-        ? html`<button key=${nom} class=${'tab' + (S.route === hash ? ' activa' : '')} onClick=${() => nav(hash)}>
-            <span class="ico">${ico}</span>${nom}
+        ? html`<button key=${nom} aria-label=${nom} class=${'tab' + (S.route === hash ? ' activa' : '')} onClick=${() => nav(hash)}>
+            <span class="ico">${ICONOS_TAB[ico]}</span>
           </button>`
         : html`<span key="fab" class="espacio-fab"></span>`)}
     </nav>

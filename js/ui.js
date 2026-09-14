@@ -1,6 +1,7 @@
 // Componentes compartidos de UI (Preact + htm, sin build).
 import { html, useState, useEffect, useRef } from '../vendor/preact-standalone.module.js';
-import { TIPOS_CUENTA, saldoCuenta } from './model.js';
+import { saldoCuenta } from './model.js';
+import { IconoCuenta } from './iconos.js';
 import { fmtConMoneda, fmtFecha, fmtHora, isoLocal, isoDia } from './util.js';
 
 /* ---------- Sheet: panel deslizante inferior ----------
@@ -197,7 +198,7 @@ export function PickerCuentas({ titulo = 'Elegir cuenta', cuentas, txs, tasas = 
     <input type="search" placeholder="Buscar por nombre, banco o número…" value=${q} onInput=${e => setQ(e.target.value)} />
     <div style=${{ marginTop: '8px' }}>
       ${lista.map(c => html`<div key=${c.id} class="fila" onClick=${() => onPick(c)}>
-        <span class="emoji">${TIPOS_CUENTA[c.tipo].emoji}</span>
+        <span class="emoji"><${IconoCuenta} tipo=${c.tipo} /></span>
         <div class="cuerpo">
           <div class="titulo">${c.nombre}</div>
           <div class="sub">${[c.banco, c.numero, c.moneda].filter(Boolean).join(' · ')}</div>
