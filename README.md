@@ -35,10 +35,11 @@ Opción B — **Cloudflare Pages** / Netlify: arrastra la carpeta, listo.
 No hay build ni dependencias que instalar. Solo sirve la carpeta:
 
 ```
-python -m http.server 8123
+python servir.py 8642
 ```
 
-y abre `http://localhost:8123`. (Los service workers requieren http/https, no `file://`.)
+y abre `http://localhost:8642`. (Los service workers requieren http/https, no `file://`.
+El script manda `Cache-Control: no-cache` para que al recargar siempre corra el código nuevo.)
 
 ## Estructura
 

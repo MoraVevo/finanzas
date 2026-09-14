@@ -353,8 +353,8 @@ function VistaFlujo({ S, todo }) {
 
   const fl = useMemo(() => flujoEfectivo({
     cuentas: S.cuentas, txs: todo, tasas: S.tasas, principal,
-    futuros: S.futuros, pasadoMeses: 6, futuroMeses: horizonte, cuentaId: cuentaScope
-  }), [S.cuentas, todo, S.tasas, S.futuros, horizonte, cuentaScope]);
+    futuros: S.futuros, fijos: S.fijos, pasadoMeses: 6, futuroMeses: horizonte, cuentaId: cuentaScope
+  }), [S.cuentas, todo, S.tasas, S.futuros, S.fijos, horizonte, cuentaScope]);
 
   const final = fl.serie.at(-1);
   const nombreScope = cuentaScope ? (S.cuentas.find(c => c.id === cuentaScope)?.nombre || '') : null;
@@ -427,17 +427,21 @@ function VistaFlujo({ S, todo }) {
         <button class="chip" onClick=${() => setEditor({ tipo: 'ingreso', moneda: principal, fecha: isoDia() })}>＋ Agregar</button>
       </div>
       ${fl.lista.map(f => {
-        const destinoF = f.tipo === 'transferencia' ? S.cuentas.find(c => c.id === f.cuentaDestino) : null;
+        const esCargoFijo = !!f.esCargoTarjeta;   // fijo cargado a tarjeta (patrimonio: no mueve la línea)
+        const destinoF = !f.esFijo && f.tipo === 'transferencia' ? S.cuentas.find(c => c.id === f.cuentaDestino) : null;
         const esDeuda = f.tipo === 'transferencia' && destinoF && (destinoF.tipo === 'tarjeta' || destinoF.tipo === 'deuda');
-        return html`<div key=${f.id} class="fila" onClick=${() => setEditor(f)}>
+        const positivo = f.esPagoTarjeta || f.tipo === 'ingreso' || esCargoFijo;
+        return html`<div key=${f.id} class="fila" onClick=${f.esFijo ? undefined : () => setEditor(f)}>
           <div class="cuerpo">
-            <div class="titulo">${f.tipo === 'transferencia'
+            <div class="titulo">${f.esPagoTarjeta ? '💳 ' : f.esFijo ? '🔁 ' : ''}${f.tipo === 'transferencia' && !f.esFijo
               ? (esDeuda ? `Pago de deuda · ${destinoF?.nombre || '?'}` : `${S.cuentas.find(c => c.id === f.cuenta)?.nombre || '?'} → ${destinoF?.nombre || '?'}`)
               : (f.nombre || (f.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'))}</div>
-            <div class="sub">${fmtFechaCorta(f.fecha)} · después: ${fmtConMoneda(f.balanceDespues, principal)}</div>
+            <div class="sub">${esCargoFijo
+              ? `${fmtFechaCorta(f.fecha)} · va a tu tarjeta ${f.fuenteNombre}`
+              : `${fmtFechaCorta(f.fecha)} · después: ${fmtConMoneda(f.balanceDespues, principal)}`}</div>
           </div>
-          <div class=${'monto num ' + (f.tipo === 'ingreso' ? 'm-ingreso' : f.tipo === 'gasto' ? 'm-gasto' : 'm-transf')}>
-            ${f.tipo === 'ingreso' ? '+' : f.tipo === 'gasto' ? '−' : '→ '}${fmtConMoneda(f.monto, f.moneda)}
+          <div class=${'monto num ' + (positivo ? 'm-ingreso' : f.tipo === 'transferencia' ? 'm-transf' : 'm-gasto')}>
+            ${positivo ? '+' : f.tipo === 'transferencia' ? '→ ' : '−'}${fmtConMoneda(f.monto, f.moneda)}
           </div>
         </div>`;
       })}

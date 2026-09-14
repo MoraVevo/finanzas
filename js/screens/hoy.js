@@ -5,7 +5,7 @@ import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
 import { patrimonio, saldoConvertido, saldoCuenta, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo } from '../model.js';
 import { FilaTx, Sheet, Segmentado } from '../ui.js';
-import { IconoCuenta } from '../iconos.js';
+import { IconoCuenta, ICONO_AJUSTES } from '../iconos.js';
 import { fmtConMoneda, fmtFecha, claveMesActual, rangoMes, fmtMesLargo, uid, textoAEntero, enteroATexto, isoDia } from '../util.js';
 
 export default function Hoy() {
@@ -50,7 +50,7 @@ export default function Hoy() {
     <div class="cabecera">
       <h1>Inicio</h1>
       <div class="acciones">
-        <button class="btn-icono" onClick=${() => nav('#/ajustes')}>⚙️</button>
+        <button class="btn-icono" aria-label="Ajustes" onClick=${() => nav('#/ajustes')}>${ICONO_AJUSTES}</button>
       </div>
     </div>
 

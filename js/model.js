@@ -278,7 +278,7 @@ export function deltasFuturos(futuros, tasas, principal, hoyD, cuentaId = null) 
  * scope: null (patrimonio) o id de cuenta. Devuelve la lista con saldo
  * acumulado y métricas del horizonte elegido.
  */
-export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], pasadoMeses = 6, futuroMeses = 6, cuentaId = null }) {
+export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fijos = [], pasadoMeses = 6, futuroMeses = 6, cuentaId = null }) {
   const hoyD = isoDia();
   const clave = claveMes(hoyD);
   const desdeD = sumarMesClave(clave, -pasadoMeses) + '-01';
@@ -293,6 +293,59 @@ export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], pa
 
   const eventos = deltasFuturos(futuros, tasas, principal, hoyD, cuentaId)
     .filter(e => e.fecha <= hastaD);
+  // Fijos: se proyectan solos dentro del horizonte. Un gasto fijo cargado a
+  // tarjeta/deuda no mueve el patrimonio (cargo y deuda se compensan) — se
+  // lista para que se vea venir; en el alcance de esa tarjeta sí resta, y su
+  // día de pago repone el ciclo cerrado.
+  const cargosPorFecha = new Map();
+  for (const r of (fijos || []).filter(f => f.activa !== false)) {
+    const fuenteC = r.fuente ? cuentas.find(c => c.id === r.fuente) : null;
+    const pasiva = !!fuenteC && (fuenteC.tipo === 'tarjeta' || fuenteC.tipo === 'deuda');
+    if (cuentaId && (!pasiva || r.fuente !== cuentaId)) continue;
+    const montoP = convertir(r.monto, r.moneda, principal, tasas, hoyD);
+    for (const fecha of fechasFijo(r, hoyD, hastaD)) {
+      const delta = cuentaId ? -montoP : (r.tipo === 'ingreso' ? montoP : (pasiva ? 0 : -montoP));
+      eventos.push({ fecha, delta, f: {
+        id: 'fijo-' + r.id + '-' + fecha, esFijo: true, tipo: r.tipo,
+        nombre: r.nombre || (r.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo'),
+        monto: r.monto, moneda: r.moneda, fecha,
+        esCargoTarjeta: pasiva && !cuentaId,
+        fuenteNombre: pasiva ? fuenteC.nombre : null,
+      }});
+      if (cuentaId) cargosPorFecha.set(fecha, (cargosPorFecha.get(fecha) || 0) + montoP);
+    }
+  }
+  // Pago del día límite (solo en el alcance de esa tarjeta): repone los cargos
+  // del ciclo que cerró en su corte previo al pago.
+  const tarjetaScope = cuentaId ? cuentas.find(c => c.id === cuentaId && c.tipo === 'tarjeta' && c.pagoDia) : null;
+  if (tarjetaScope) {
+    let y = +hoyD.slice(0, 4), m = +hoyD.slice(5, 7) - 1, limitePrev = null;
+    for (let i = 0; i < 3; i++) {
+      const pago = `${y}-${p2g(m + 1)}-${p2g(Math.min(tarjetaScope.pagoDia, diasDelMes(y, m)))}`;
+      let cierre = null;
+      if (tarjetaScope.corte) {
+        const dP = new Date(pago + 'T12:00');
+        const pc = tarjetaScope.pagoDia > tarjetaScope.corte ? 0 : 1;
+        const dm = new Date(dP.getFullYear(), dP.getMonth() - pc, 12);
+        cierre = isoDia(new Date(dm.getFullYear(), dm.getMonth(), Math.min(tarjetaScope.corte, diasDelMes(dm.getFullYear(), dm.getMonth())), 12));
+      }
+      if (pago > hoyD && pago <= hastaD) {
+        let montoP = 0;
+        for (const [fecha, monto] of cargosPorFecha) {
+          if (limitePrev && fecha <= limitePrev) continue;
+          if (cierre && fecha > cierre) continue;
+          montoP += monto;
+        }
+        if (montoP > 0) eventos.push({ fecha: pago, delta: montoP, f: {
+          id: 'pago-fijo-' + pago, esFijo: true, esPagoTarjeta: true, tipo: 'ingreso',
+          nombre: 'Pago de ' + tarjetaScope.nombre, monto: montoP, moneda: principal, fecha: pago,
+        }});
+      }
+      limitePrev = cierre || pago;
+      m++; if (m > 11) { m = 0; y++; }
+    }
+  }
+  eventos.sort((a, b) => a.fecha.localeCompare(b.fecha));
   const serie = [{ fecha: hoyD, balance: balanceHoyScope }];
   let acum = balanceHoyScope, totalIn = 0, totalOut = 0;
   const lista = eventos.map(e => {

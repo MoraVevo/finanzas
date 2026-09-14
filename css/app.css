@@ -73,7 +73,7 @@ input[type="datetime-local"], input[type="date"] {
 /* ============ Estructura ============ */
 .vista {
   max-width: 520px; margin: 0 auto; min-height: 100dvh;
-  padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px calc(var(--tab-h) + env(safe-area-inset-bottom, 0px) + 24px);
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px calc(var(--tab-h) + 16px);
 }
 .vista.sin-tab { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
 
@@ -88,6 +88,7 @@ input[type="datetime-local"], input[type="date"] {
   width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;
   background: var(--card); box-shadow: var(--shadow); font-size: 17px;
 }
+.btn-icono svg { width: 20px; height: 20px; display: block; }
 .btn-icono:active { transform: scale(.92); }
 
 .tarjeta {
@@ -107,7 +108,7 @@ input[type="datetime-local"], input[type="date"] {
   background: color-mix(in srgb, var(--card) 88%, transparent);
   -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
   border-top: 1px solid var(--line);
-  padding: 6px 10px calc(env(safe-area-inset-bottom, 0px) + 6px);
+  padding: 6px 10px 4px; /* sin safe-area: llega al límite real de la pantalla */
   user-select: none; -webkit-user-select: none;
 }
 .tabbar .tab {
@@ -124,7 +125,7 @@ input[type="datetime-local"], input[type="date"] {
 
 .fab {
   position: fixed; z-index: 45;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  bottom: 14px;
   left: 50%; transform: translateX(-50%);
   width: 58px; height: 58px; border-radius: 50%;
   background: linear-gradient(160deg, #16a37d, #0b7a5e);
@@ -313,7 +314,7 @@ input[type="datetime-local"], input[type="date"] {
 @keyframes subir2 { from { opacity: 0; transform: translate(-50%, 12px); } }
 
 /* ============ Estadísticas ============ */
-.stats-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+.stats-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
 .stat-box { background: var(--card); border-radius: 15px; padding: 12px 10px; box-shadow: var(--shadow); text-align: center; }
 .stat-box .etq { font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 .stat-box .val { font-size: 17px; font-weight: 800; margin-top: 3px; font-variant-numeric: tabular-nums; }
