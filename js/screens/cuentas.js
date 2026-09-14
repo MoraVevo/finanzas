@@ -6,7 +6,7 @@ import { useStore, nav, recargar, toast } from '../store.js';
 import { saldoCuenta, saldoConvertido, convertir, planCuotas, TIPOS_CUENTA } from '../model.js';
 import { Sheet, SelectorMoneda, FilaTx, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_EDITAR, ICONO_CAJA, ICONO_RESTAURAR } from '../iconos.js';
-import { uid, textoAEntero, enteroATexto, fmtConMoneda, fmtFecha, isoLocal } from '../util.js';
+import { uid, textoAEntero, enteroATexto, fmtConMoneda, fmtFecha, isoLocal, isoDia } from '../util.js';
 
 export default function Cuentas() {
   const S = useStore();
@@ -168,7 +168,7 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
 }
 
 /* ---------- Editor ---------- */
-function EditorCuenta({ c, S, cerrar }) {
+function EditorCuenta({ c, S, cerrar, alGuardar }) {
   const [f, setF] = useState({
     tipo: c.tipo || 'bancaria',
     nombre: c.nombre || '',
@@ -176,7 +176,8 @@ function EditorCuenta({ c, S, cerrar }) {
     saldo: c.saldoInicial != null ? enteroATexto(Math.abs(c.saldoInicial), 2) : '',
     limite: c.limite != null ? enteroATexto(c.limite, 2) : '',
     corte: c.corte || '', pagoDia: c.pagoDia || '', bolsa: c.bolsa || 'individual',
-    banco: c.banco || '', numero: c.numero || '', titular: c.titular || '', notas: c.notas || ''
+    banco: c.banco || '', numero: c.numero || '', titular: c.titular || '', notas: c.notas || '',
+    enCuotas: false, numCuotas: '', primeraCuota: isoDia()
   });
   const pasivo = f.tipo === 'tarjeta' || f.tipo === 'deuda';
   const set = p => setF({ ...f, ...p });
@@ -187,11 +188,18 @@ function EditorCuenta({ c, S, cerrar }) {
   const guardar = async () => {
     if (!f.nombre.trim()) { toast('Ponle un nombre a la cuenta'); return; }
     const saldo = textoAEntero(f.saldo || '0', 2) || 0;
+    const nC = parseInt(f.numCuotas, 10);
+    if (pasivo && f.enCuotas) {
+      if (saldo <= 0) { toast('Con cuotas necesitas la deuda actual: es el monto total a financiar'); return; }
+      if (!(nC >= 1 && nC <= 120)) { toast('Número de cuotas inválido (1-120)'); return; }
+    }
     const limite = f.tipo === 'tarjeta' ? (textoAEntero(f.limite || '0', 2) || null) : null;
     const corte = f.tipo === 'tarjeta' ? diaValido(f.corte) : null;
-    const pagoDia = f.tipo === 'tarjeta' ? diaValido(f.pagoDia) : null;
+    const pagoDia = pasivo ? diaValido(f.pagoDia) : null;
+    if (pasivo && !f.enCuotas && !pagoDia) { toast('Una deuda necesita fecha: pon el día de pago — o márcala como cuotas'); return; }
+    const idCuenta = c.id || uid();
     await fin.guardarCuenta({
-      id: c.id || uid(), tipo: f.tipo, nombre: f.nombre.trim(), moneda: f.moneda,
+      id: idCuenta, tipo: f.tipo, nombre: f.nombre.trim(), moneda: f.moneda,
       saldoInicial: pasivo ? -saldo : saldo,
       limite, corte, pagoDia,
       bolsa: f.tipo === 'tarjeta' ? f.bolsa : null,
@@ -200,6 +208,15 @@ function EditorCuenta({ c, S, cerrar }) {
       archivada: c.archivada || false,
       createdAt: c.createdAt || new Date().toISOString(), updatedAt: new Date().toISOString()
     });
+    // cuotas marcadas al crear: el plan nace junto con la cuenta
+    if (pasivo && f.enCuotas && !c.id) {
+      await fin.guardarCuota({
+        id: uid(), nombre: f.nombre.trim(), cuentaId: idCuenta,
+        montoTotal: saldo, numCuotas: nC, moneda: f.moneda,
+        primeraFecha: f.primeraCuota || isoDia(),
+        activa: true, creadoEn: new Date().toISOString()
+      });
+    }
     await recargar();
 
     // Con la nueva configuración (p. ej. límite), los movimientos futuros de esta
@@ -230,6 +247,8 @@ function EditorCuenta({ c, S, cerrar }) {
     }
 
     toast(eliminados ? `✓ Cuenta guardada · ${eliminados} movimiento(s) futuro(s) inválidos eliminados` : '✓ Cuenta guardada');
+    // tarjeta/deuda NUEVA con deuda: ofrecer programar sus cuotas de una vez
+    alGuardar?.(!c.id && pasivo ? { id: idCuenta, nombre: f.nombre.trim(), moneda: f.moneda } : null, saldo);
     cerrar();
   };
 
@@ -285,6 +304,42 @@ function EditorCuenta({ c, S, cerrar }) {
             ? 'El límite es el crédito total del banco, compartido entre tus tarjetas.'
             : 'El límite pertenece solo a esta tarjeta.'}</div>
         <//>
+      <//>`}
+      ${pasivo && html`<div style=${{ display: 'grid', gap: '8px', background: 'var(--chip)', borderRadius: '14px', padding: '10px' }}>
+        <div class="dato-cuenta" style=${{ fontWeight: 700 }}>PAGO DE LA DEUDA</div>
+        <label style=${{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14.5px', fontWeight: 700 }}>
+          <input type="checkbox" checked=${f.enCuotas} style=${{ width: '20px', height: '20px' }}
+            onChange=${e => set({ enCuotas: e.target.checked })} />
+          Pagar en cuotas
+        </label>
+        ${f.enCuotas ? html`
+          <div style=${{ display: 'flex', gap: '8px' }}>
+            <div style=${{ flex: 1 }}>
+              <div class="dato-cuenta">Cuotas (meses)</div>
+              <input inputMode="numeric" placeholder="Ej. 10" value=${f.numCuotas} style=${{ textAlign: 'right' }}
+                onInput=${e => set({ numCuotas: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
+            <//>
+            <div style=${{ flex: 1 }}>
+              <div class="dato-cuenta">Primera cuota</div>
+              <input type="date" value=${f.primeraCuota}
+                onChange=${e => e.target.value && set({ primeraCuota: e.target.value })} />
+            <//>
+          <//>
+          ${textoAEntero(f.saldo || '0', 2) && parseInt(f.numCuotas, 10) >= 1 ? html`<div class="dato-cuenta">
+            Cuota mensual: <b class="num">${(() => {
+              const total = textoAEntero(f.saldo || '0', 2), n = parseInt(f.numCuotas, 10), base = Math.floor(total / n);
+              return `${fmtConMoneda(base, f.moneda)}${total % n ? ` (última: ${fmtConMoneda(total - base * (n - 1), f.moneda)})` : ''}`;
+            })()}</b> — al terminar, el plan desaparece solo.
+          <//>` : null}
+          ${c.id && html`<div class="dato-cuenta">Los planes ya creados se administran en Inicio (＋ → Cuotas).</div>`}
+        ` : html`
+          ${f.tipo === 'deuda' && html`<div>
+            <div class="dato-cuenta">Día de pago (de cada mes)</div>
+            <input inputMode="numeric" placeholder="Ej. 20" value=${f.pagoDia} style=${{ textAlign: 'right', maxWidth: '110px' }}
+              onInput=${e => set({ pagoDia: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) })} />
+          <//>`}
+          <div class="dato-cuenta">Una deuda no vive sin fecha: pon el día del mes en que se paga${f.tipo === 'tarjeta' ? ' (en el bloque de crédito)' : ''}.</div>
+        `}
       <//>`}
       <input placeholder="Banco (opcional)" list="bancos-conocidos" value=${f.banco} onInput=${e => set({ banco: e.target.value })} />
       <datalist id="bancos-conocidos">

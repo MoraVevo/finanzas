@@ -317,7 +317,7 @@ export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fi
   }
   // Pago del día límite (solo en el alcance de esa tarjeta): repone los cargos
   // del ciclo que cerró en su corte previo al pago.
-  const tarjetaScope = cuentaId ? cuentas.find(c => c.id === cuentaId && c.tipo === 'tarjeta' && c.pagoDia) : null;
+  const tarjetaScope = cuentaId ? cuentas.find(c => c.id === cuentaId && (c.tipo === 'tarjeta' || c.tipo === 'deuda') && c.pagoDia) : null;
   if (tarjetaScope) {
     let y = +hoyD.slice(0, 4), m = +hoyD.slice(5, 7) - 1, limitePrev = null;
     for (let i = 0; i < 3; i++) {
@@ -482,10 +482,11 @@ export function cuotasPorMes(cuentaId, cuotas = [], tasas = [], principal, meses
   return out;
 }
 
-/** Próximos pagos de una tarjeta según su ciclo de corte: el pago cubre la
- *  factura que cerró en el corte previo. El primero sale del saldo REAL al
- *  cierre (menos el pendiente de cuotas, que se amortiza con su plan); los
- *  siguientes proyectan solo los fijos cargados a la tarjeta en su ciclo. */
+/** Próximos pagos de una tarjeta según su ciclo de corte: el primero cubre la
+ *  factura que cerró en el corte previo (saldo real al cierre, menos el
+ *  pendiente de cuotas que se amortiza con su plan, más los cargos fijos del
+ *  ciclo); los siguientes proyectan cargos fijos y cuotas de su ciclo. Las
+ *  entradas con monto 0 se conservan: "no hay nada programado" también informa. */
 export function pagosTarjeta(c, { txs, tasas, principal, fijos = [], cuotas = [], n = 2, hoyD = isoDia() }) {
   if (!c.pagoDia) return [];
   const ordenadas = [...txs].sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -532,9 +533,14 @@ export function pagosTarjeta(c, { txs, tasas, principal, fijos = [], cuotas = []
       if (ref && e.fecha > ref) continue;
       montoP += e.montoP;
     }
+    // ciclo posterior: además de los fijos, las cuotas cuyo vencimiento cae
+    // dentro del ciclo (el usuario piensa la factura como "fijos + cuotas")
+    for (const p of (cuotas || []).filter(p => p.activa !== false && p.cuentaId === c.id)) {
+      for (const o of pagosCuota(p, refPrev || hoyD, ref || pago)) montoP += convertir(o.monto, p.moneda, principal, tasas, o.fecha);
+    }
     refPrev = ref;
     return { fecha: pago, montoP };
-  }).filter(p => p.montoP > 0);
+  });
 }
 
 /**
@@ -604,7 +610,7 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], c
   // al pago. Primera ocurrencia: saldo real completo al cierre (el ciclo abierto
   // de hoy siempre cierra ahí). Siguientes: solo fijos cargados a la tarjeta en
   // su ciclo — los gastos reales futuros no se proyectan.
-  for (const c of cuentas.filter(c => !c.archivada && c.tipo === 'tarjeta' && c.pagoDia)) {
+  for (const c of cuentas.filter(c => !c.archivada && (c.tipo === 'tarjeta' || c.tipo === 'deuda') && c.pagoDia)) {
     const pagos = [];
     let y = +hoyD.slice(0, 4), m = +hoyD.slice(5, 7) - 1;
     for (let i = 0; i < 3; i++) {

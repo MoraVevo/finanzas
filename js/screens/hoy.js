@@ -99,10 +99,7 @@ export default function Hoy() {
     <div class="tarjeta">
       <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
         <h3 style=${{ marginBottom: 0 }}>Movimientos programados</h3>
-        <div class="chips-scroll" style=${{ padding: 0 }}>
-          <button class="chip" onClick=${() => setProgramadas({ tab: 'fijos' })}>＋ Fijos</button>
-          <button class="chip" onClick=${() => setProgramadas({ tab: 'cuotas', nueva: true })}>＋ Cuota</button>
-        </div>
+        <button class="chip" aria-label="Programar movimiento" onClick=${() => setProgramadas({ tab: 'fijos' })}>＋</button>
       </div>
       <div class="dato-cuenta" style=${{ marginBottom: '6px' }}>
         Teórico · hoy: <b class="num">${fmtConMoneda(pa.base, principal)}</b> disponibles${fijosActivos.length ? '' : ' — configura tus ingresos y gastos fijos'}
@@ -203,8 +200,9 @@ function PanelCuotas({ S, nueva, cerrar }) {
   </div>`;
 }
 
-/* ---------- Editor de plan de cuotas ---------- */
-function EditorCuota({ p, S, cerrar }) {
+/* ---------- Editor de plan de cuotas (también lo usa Cuentas al crear una
+   tarjeta/deuda nueva: ofrecer programar el pago desde el inicio) ---------- */
+export function EditorCuota({ p, S, cerrar }) {
   const [d, setD] = useState({
     nombre: p.nombre || '', cuentaId: p.cuentaId || null,
     montoTotal: p.montoTotal ? enteroATexto(p.montoTotal, 2) : '',

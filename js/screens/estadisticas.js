@@ -6,7 +6,7 @@
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
-import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos } from '../model.js';
+import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
 import { IconoCuenta, IconoCategoria } from '../iconos.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
@@ -243,7 +243,10 @@ export default function Estadisticas() {
  *  flechas que recorre "Todo" y cada cuenta activa (también tocando el
  *  centro avanza). Debajo, puntos indican la posición — igual que el carrusel. */
 function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope }) {
-  const activas = S.cuentas.filter(c => !c.archivada);
+  // orden por movimiento: la cuenta más usada queda primero (después de Todo)
+  const conteo = id => todo.filter(t => t.cuenta === id || t.cuentaDestino === id).length;
+  const activas = S.cuentas.filter(c => !c.archivada)
+    .sort((a, b) => conteo(b.id) - conteo(a.id) || a.nombre.localeCompare(b.nombre));
   const orden = [null, ...activas.map(c => c.id)];
   const pos = Math.max(0, orden.indexOf(cuentaScope));
   const ir = delta => setCuentaScope(orden[(pos + delta + orden.length) % orden.length]);
@@ -271,6 +274,8 @@ function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope }) {
 function VistaRango({ S, todo }) {
   const [filtro, setFiltro] = useState('mes'); // preset o [desde, hasta] personalizado
   const [cuentaScope, setCuentaScope] = useState(null); // null = Todo
+  const [slide, setSlide] = useState('dia'); // diapositiva del carrusel (indicadores por slide)
+  useEffect(() => { setSlide('dia'); }, [cuentaScope]);
   const principal = S.ajustes.monedaPrincipal;
   const [desde, hasta] = Array.isArray(filtro) ? filtro : rangoPreset(filtro);
   const etiqueta = etiquetaRango(desde, hasta);
@@ -302,6 +307,21 @@ function VistaRango({ S, todo }) {
     ? pagosTarjeta(cuentaObj, { txs: todo, tasas: S.tasas, principal, fijos: S.fijos, cuotas: S.cuotas, n: 2 })
     : [];
   const saldoT = esPasiva ? saldoCuenta(cuentaObj, todo, S.tasas) : 0;
+  // métricas por diapositiva (tarjeta): cuotas y deuda
+  const planes = esPasiva ? S.cuotas.filter(p => p.activa !== false && p.cuentaId === cuentaScope) : [];
+  const pendCuotas = planes.reduce((s, p) => s + convertir(planCuotas(p).pendiente, p.moneda, principal, S.tasas, isoDia()), 0);
+  const serieCuotasMes = esPasiva ? cuotasPorMes(cuentaScope, S.cuotas, S.tasas, principal, 6) : [];
+  const proxCuota = serieCuotasMes.find(m => m.total > 0) || null;
+  const libreEnTxt = planes.length
+    ? (() => {
+      const ultima = planes.reduce((mx, p) => { const u = planCuotas(p).ultima; return u > mx ? u : mx; }, '');
+      const d = deISO(ultima);
+      return `${MESES3[d.getMonth()]} ${d.getFullYear()}`;
+    })() : null;
+  const deudaSerie3 = esPasiva ? serieSaldos({ cuentas: S.cuentas, txs: todo, tasas: S.tasas, principal, desdeD: sumarMesClave(claveMesActual(), -3) + '-01', hastaD: isoDia(), cuentaId: cuentaScope }) : [];
+  const deudaHoy = deudaSerie3.length ? -deudaSerie3.at(-1).balance : 0;
+  const deuda3m = deudaSerie3.length ? -deudaSerie3[0].balance : 0;
+  const delta3m = deudaHoy - deuda3m;
   // El promedio divide entre los días REALMENTE usados: si la app empezó hace
   // una semana, no se reparte el gasto entre 90 días.
   const primeraTx = txs.length
@@ -324,20 +344,35 @@ function VistaRango({ S, todo }) {
 
     ${esPasiva ? html`
     <div class="stats-grid-3">
+      ${slide === 'cuotas' ? html`
+      <div class="stat-box"><div class="etq">Próxima cuota</div>
+        <div class="val">${proxCuota ? fmtFicha(proxCuota.total) : '—'}</div>
+        ${proxCuota && html`<div class="val" style=${{ color: 'var(--muted)', fontWeight: 600, marginTop: '1px' }}>${MESES3[+proxCuota.clave.slice(5, 7) - 1]}</div>`}</div>
+      <div class="stat-box"><div class="etq">En cuotas</div><div class="val">${fmtFicha(pendCuotas)}</div></div>
+      <div class="stat-box"><div class="etq">Libre en</div>
+        <div class="val" style=${{ fontSize: '15px' }}>${libreEnTxt || '—'}</div></div>`
+      : slide === 'deuda' ? html`
+      <div class="stat-box"><div class="etq">Deuda hoy</div>
+        <div class="val m-gasto">${deudaHoy > 0 ? '−' + fmtFicha(deudaHoy) : fmtFicha(Math.max(0, deudaHoy))}</div></div>
+      <div class="stat-box"><div class="etq">Hace 3 meses</div>
+        <div class="val" style=${{ color: 'var(--muted)' }}>${deuda3m > 0 ? '−' + fmtFicha(deuda3m) : fmtFicha(Math.max(0, deuda3m))}</div></div>
+      <div class="stat-box"><div class="etq">Cambio 3 m</div>
+        <div class="val" style=${{ color: delta3m > 0 ? 'var(--gasto)' : 'var(--ingreso)' }}>${delta3m > 0 ? '▲' : '▼'} ${fmtFicha(Math.abs(delta3m))}</div></div>`
+      : html`
       <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
       <div class="stat-box"><div class="etq">Gasto / día</div><div class="val">${fmtFicha(Math.round(promDia))}</div></div>
       <div class="stat-box"><div class="etq">Mayor gasto</div>
         <div class="val" style=${{ fontSize: '13px', lineHeight: 1.35 }}>
           ${catTop ? html`<span style=${{ display: 'inline-flex', alignItems: 'center', gap: '3px', justifyContent: 'center' }}>
-            <${IconoCategoria} emoji=${catTop.emoji} nombre=${catTop.nombre} />${catTop.nombre}</span>` : '—'}</div></div>
+            <${IconoCategoria} emoji=${catTop.emoji} nombre=${catTop.nombre} />${catTop.nombre}</span>` : '—'}</div></div>`}
     </div>
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">Próximo pago</div>
-        <div class="val">${pagosT[0] ? fmtFicha(Math.round(pagosT[0].montoP)) : '—'}</div>
-        ${pagosT[0] && html`<div class="val" style=${{ color: 'var(--muted)', fontWeight: 600, marginTop: '1px' }}>${fmtDiaMes(pagosT[0].fecha)}</div>`}</div>
-      <div class="stat-box"><div class="etq">Siguiente</div>
-        <div class="val">${pagosT[1] ? fmtFicha(Math.round(pagosT[1].montoP)) : '—'}</div>
-        ${pagosT[1] && html`<div class="val" style=${{ color: 'var(--muted)', fontWeight: 600, marginTop: '1px' }}>${fmtDiaMes(pagosT[1].fecha)}</div>`}</div>
+        <div class="val">${fmtFicha(Math.round(pagosT[0]?.montoP || 0))}</div>
+        <div class="val" style=${{ color: 'var(--muted)', fontWeight: 600, marginTop: '1px' }}>${pagosT[0] ? fmtDiaMes(pagosT[0].fecha) : '—'}</div></div>
+      <div class="stat-box"><div class="etq">Pago posterior</div>
+        <div class="val" style=${{ color: (pagosT[1]?.montoP || 0) === 0 ? 'var(--muted)' : 'inherit' }}>${fmtFicha(Math.round(pagosT[1]?.montoP || 0))}</div>
+        <div class="val" style=${{ color: 'var(--muted)', fontWeight: 600, marginTop: '1px' }}>${pagosT[1] ? fmtDiaMes(pagosT[1].fecha) : '—'}</div></div>
       <div class="stat-box"><div class="etq">Crédito disponible</div>
         ${cuentaObj.limite > 0
           ? html`<div class="val" style=${{ color: cuentaObj.limite + saldoT < 0 ? 'var(--gasto)' : 'inherit' }}>${fmtFicha(Math.max(0, cuentaObj.limite + saldoT))}</div>
@@ -345,6 +380,13 @@ function VistaRango({ S, todo }) {
           : html`<div class="val">—</div>
               <div class="etq" style=${{ marginTop: '2px' }}>ponle límite en Cuentas</div>`}
       </div>
+      <div class="stat-box" style=${{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><div class="etq">Corte → Pago</div>
+        <div class="val" style=${{ display: 'inline-flex', alignItems: 'baseline', gap: '3px', justifyContent: 'center' }}>
+          <span style=${{ color: 'var(--muted)' }}>${cuentaObj.corte || '—'}</span>
+          <span style=${{ color: 'var(--muted)', fontSize: '12px', fontWeight: 600 }}>→</span>
+          <span style=${{ color: 'var(--accent)' }}>${cuentaObj.pagoDia || '—'}</span>
+        </div>
+        <div class="etq" style=${{ marginTop: 0 }}>cada mes</div></div>
     </div>` : html`
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
@@ -363,7 +405,7 @@ function VistaRango({ S, todo }) {
     </div>`}
 
     <${TarjetaDia} serie=${serie} est=${est} etiqueta=${etiqueta} principal=${principal}
-      cuenta=${cuentaObj} S=${S} todo=${todo} />
+      cuenta=${cuentaObj} S=${S} todo=${todo} vista=${slide} setVista=${setSlide} />
 
     <div class="tarjeta">
       <h3>Por categoría</h3>
@@ -1060,18 +1102,18 @@ const fmtFechaCorta = f => {
 /* ---------- Tarjeta carrusel: Día / Estructura / Fijos ----------
    Se puede deslizar horizontalmente o tocar las pestañas. La clasificación
    fijo/variable viene de estructuraRango (transacciones reales vs reglas fijas). */
-function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo }) {
+function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, vista, setVista }) {
   // En alcance pasivo (tarjeta/deuda) el carrusel cuenta la historia de la
   // deuda: gasto del período, compromiso de cuotas y deuda en el tiempo.
+  // `vista`/`setVista` vienen de la vista: los indicadores siguen al slide.
   const pasiva = !!cuenta && (cuenta.tipo === 'tarjeta' || cuenta.tipo === 'deuda');
   const VISTAS = pasiva
     ? [['dia', 'Día'], ['cuotas', 'Cuotas'], ['deuda', 'Deuda']]
     : [['dia', 'Día'], ['estructura', 'Estructura'], ['cobertura', 'Fijos']];
   const orden = VISTAS.map(v => v[0]);
-  const [vista, setVista] = useState('dia');
   const cardRef = useRef(null);
   const trackRef = useRef(null);
-  const vistaRef = useRef('dia');
+  const vistaRef = useRef(vista);
   vistaRef.current = vista;
   // Swipe que SIGUE AL DEDO: el carrusel va con el dedo y al soltar, un
   // arrastre decidido pasa a la vista contigua. Sin pestañas de encabezado:

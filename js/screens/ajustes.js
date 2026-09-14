@@ -7,7 +7,7 @@ import { Sheet, SelectorMoneda, EmojiPicker, Segmentado } from '../ui.js';
 import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.js';
 import { exportarCSV, exportarJSON, importarJSON, copiarParaIA } from '../export.js';
 
-const VERSION = '1.41';
+const VERSION = '1.45';
 
 export default function Ajustes() {
   const S = useStore();
@@ -15,13 +15,13 @@ export default function Ajustes() {
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 
   const filas = [
-    ['moneda', '💱', 'Moneda principal', 'Reportes y presupuestos en ' + S.ajustes.monedaPrincipal],
-    ['tasas', '🔁', 'Tasas de cambio', S.tasas.length ? S.tasas.length + ' tasa(s) registrada(s)' : 'Para cuentas en varias monedas'],
-    ['categorias', '🗂️', 'Categorías', S.categorias.length + ' categorías'],
-    ['etiquetas', '🏷️', 'Actividades / etiquetas', S.etiquetas.length + ' etiquetas'],
-    ['presupuestos', '🎯', 'Presupuestos mensuales', 'Por categoría, en ' + S.ajustes.monedaPrincipal],
-    ['datos', '📤', 'Mis datos', 'Exportar CSV/JSON, respaldo, copiar para IA, importar'],
-    ['instalar', '📲', 'Instalar en iPhone', standalone ? '✓ Ya instalada como app' : 'Pantalla de inicio, offline'],
+    ['moneda', 'Moneda principal', 'Reportes y presupuestos en ' + S.ajustes.monedaPrincipal],
+    ['tasas', 'Tasas de cambio', S.tasas.length ? S.tasas.length + ' tasa(s) registrada(s)' : 'Para cuentas en varias monedas'],
+    ['categorias', 'Categorías', S.categorias.length + ' categorías'],
+    ['etiquetas', 'Actividades / etiquetas', S.etiquetas.length + ' etiquetas'],
+    ['presupuestos', 'Presupuestos mensuales', 'Por categoría, en ' + S.ajustes.monedaPrincipal],
+    ['datos', 'Mis datos', 'Exportar CSV/JSON, respaldo, copiar para IA, importar'],
+    ['instalar', 'Instalar en iPhone', standalone ? 'Ya instalada como app' : 'Pantalla de inicio, offline'],
   ];
 
   return html`<div class="vista">
@@ -31,9 +31,8 @@ export default function Ajustes() {
     </div>
 
     <div class="tarjeta" style=${{ paddingTop: '4px' }}>
-      ${filas.map(([k, emoji, titulo, sub]) => html`
+      ${filas.map(([k, titulo, sub]) => html`
         <div key=${k} class="fila" onClick=${() => setPanel(k)}>
-          <span class="emoji">${emoji}</span>
           <div class="cuerpo"><div class="titulo">${titulo}</div><div class="sub">${sub}</div></div>
           <span style=${{ color: 'var(--muted)' }}>›</span>
         </div>`)}
@@ -63,13 +62,13 @@ export default function Ajustes() {
     ${panel === 'instalar' && html`<${Sheet} titulo="Instalar en tu iPhone" onClose=${() => setPanel(null)}>
       <div class="dato-cuenta" style=${{ lineHeight: 1.9 }}>
         ${standalone
-          ? html`✅ <b>Ya está instalada</b> como aplicación. Funciona sin internet.`
+          ? html`<b>Ya está instalada</b> como aplicación. Funciona sin internet.`
           : html`<b>Una vez, desde Safari:</b><br/>
             1. Toca el botón <b>Compartir</b> (cuadro con flecha ↑).<br/>
             2. Elige <b>“Añadir a pantalla de inicio”</b>.<br/>
             3. Confirma <b>Añadir</b>.<br/><br/>
             La app abrirá a pantalla completa, funcionará offline y sus datos no se borran por inactividad.`}
-        <br/><br/>💡 También úsala desde tu laptop: abre la misma dirección en el navegador.
+        <br/><br/>También úsala desde tu laptop: abre la misma dirección en el navegador.
       </div>
     <//>`}
   </div>`;
@@ -225,7 +224,7 @@ function PanelDatos({ store: S, cerrar }) {
     <div class="dato-cuenta" style=${{ marginBottom: '12px' }}>${stats || '…'}</div>
 
     <button class="btn btn-primario" disabled=${ocupado} onClick=${async () => { setOcupado(true); try { await exportarCSV(ctx); } catch (e) { toast('Error: ' + e.message); } setOcupado(false); }}>
-      📊 Exportar CSV (Excel / Sheets)
+      Exportar CSV (Excel / Sheets)
     </button>
     <div class="dato-cuenta" style=${{ margin: '6px 0 10px' }}>
       Columnas: fecha, hora, tipo, monto, moneda, monto convertido, cuenta, categoría, etiquetas, motivo.
@@ -233,10 +232,10 @@ function PanelDatos({ store: S, cerrar }) {
 
     <div style=${{ display: 'flex', gap: '8px' }}>
       <button class="btn btn-suave" disabled=${ocupado} onClick=${async () => { setOcupado(true); try { await exportarJSON({ incluirImagenes: false }); } catch (e) { toast('Error: ' + e.message); } setOcupado(false); }}>
-        💾 Respaldo JSON
+        Respaldo JSON
       </button>
       <button class="btn btn-suave" disabled=${ocupado} onClick=${async () => { setOcupado(true); try { await exportarJSON({ incluirImagenes: true }); } catch (e) { toast('Error: ' + e.message); } setOcupado(false); }}>
-        🖼️ Con comprobantes
+        Con comprobantes
       </button>
     </div>
     <div class="dato-cuenta" style=${{ margin: '6px 0 10px' }}>
@@ -244,7 +243,7 @@ function PanelDatos({ store: S, cerrar }) {
     </div>
 
     <div class="tarjeta" style=${{ background: 'var(--accent-soft)', boxShadow: 'none' }}>
-      <h3 style=${{ color: 'var(--accent)' }}>🤖 Copiar para IA</h3>
+      <h3 style=${{ color: 'var(--accent)' }}>Copiar para IA</h3>
       <div class="dato-cuenta" style=${{ marginBottom: '8px' }}>
         Copia al portapapeles un JSON con tu patrimonio y los movimientos recientes, listo para pegar en
         ChatGPT (u otra IA) con una instrucción de análisis incluida. No incluye comprobantes.
@@ -269,7 +268,7 @@ function PanelDatos({ store: S, cerrar }) {
       <//>`}
     </div>
 
-    <button class="btn btn-suave" onClick=${() => archivo.current?.click()}>📥 Importar respaldo (JSON)</button>
+    <button class="btn btn-suave" onClick=${() => archivo.current?.click()}>Importar respaldo (JSON)</button>
     <input ref=${archivo} type="file" accept="application/json,.json" hidden onChange=${async e => {
       const f = e.target.files[0];
       e.target.value = '';
