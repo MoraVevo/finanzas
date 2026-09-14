@@ -6,7 +6,7 @@
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
-import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA } from '../model.js';
+import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
 import { IconoCuenta, IconoCategoria } from '../iconos.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
@@ -239,15 +239,49 @@ export default function Estadisticas() {
   </div>`;
 }
 
+/** Selector de alcance de cuenta para la vista Resumen: una pastilla con
+ *  flechas que recorre "Todo" y cada cuenta activa (también tocando el
+ *  centro avanza). Debajo, puntos indican la posición — igual que el carrusel. */
+function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope }) {
+  const activas = S.cuentas.filter(c => !c.archivada);
+  const orden = [null, ...activas.map(c => c.id)];
+  const pos = Math.max(0, orden.indexOf(cuentaScope));
+  const ir = delta => setCuentaScope(orden[(pos + delta + orden.length) % orden.length]);
+  const actual = cuentaScope ? S.cuentas.find(c => c.id === cuentaScope) : null;
+  return html`<div style=${{ marginBottom: '12px' }}>
+    <div style=${{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <button class="flecha-cuenta" aria-label="Cuenta anterior" onClick=${() => ir(-1)}>‹</button>
+      <button class="caja-cuenta" onClick=${() => ir(1)} aria-label=${actual ? 'Siguiente cuenta' : 'Ver por cuenta'}>
+        ${actual
+          ? html`<${IconoCuenta} tipo=${actual.tipo} /> <span>${actual.nombre}</span>
+              <span class="num" style=${{ color: 'var(--muted)', fontWeight: 600 }}>${fmtConMoneda(saldoCuenta(actual, todo, S.tasas), actual.moneda)}</span>`
+          : html`<span>Todo</span><span class="num" style=${{ color: 'var(--muted)', fontWeight: 600 }}>· ${fmtConMoneda(patrimonio(S.cuentas, todo, S.tasas, S.ajustes.monedaPrincipal).total, S.ajustes.monedaPrincipal)}</span>`}
+      </button>
+      <button class="flecha-cuenta" aria-label="Cuenta siguiente" onClick=${() => ir(1)}>›</button>
+    </div>
+    ${orden.length > 1 && html`<div class="carrusel-puntos" style=${{ margin: '8px 0 0' }}>
+      ${orden.map(id => html`<button key=${id || 'todo'} type="button" aria-label="Alcance"
+        class=${'carrusel-punto' + ((id === cuentaScope) ? ' activo' : '')}
+        onClick=${() => setCuentaScope(id)}><//>`)}
+    <//>`}
+  </div>`;
+}
+
 /* ================= Vista: Resumen (período elegible) ================= */
 function VistaRango({ S, todo }) {
   const [filtro, setFiltro] = useState('mes'); // preset o [desde, hasta] personalizado
+  const [cuentaScope, setCuentaScope] = useState(null); // null = Todo
   const principal = S.ajustes.monedaPrincipal;
   const [desde, hasta] = Array.isArray(filtro) ? filtro : rangoPreset(filtro);
   const etiqueta = etiquetaRango(desde, hasta);
-  const st = statsRango(desde, hasta, todo, S);
-  const est = estructuraRango(desde, hasta, todo, S);
-  const tend = tendencia(todo, S, 12);
+  // alcance de cuenta: las estadísticas se filtran a los movimientos de esa
+  // cuenta (gastos e ingresos con ella; las transferencias ya no cuentan)
+  const txs = cuentaScope
+    ? todo.filter(t => t.cuenta === cuentaScope || t.cuentaDestino === cuentaScope)
+    : todo;
+  const st = statsRango(desde, hasta, txs, S);
+  const est = estructuraRango(desde, hasta, txs, S);
+  const tend = tendencia(txs, S, 12);
   const p = patrimonio(S.cuentas, todo, S.tasas, principal);
   const presup = new Map(S.presupuestos.map(x => [x.categoria, x.monto]));
   const maxCat = Math.max(1, ...st.porCategoria.map(c => c.monto));
@@ -259,12 +293,19 @@ function VistaRango({ S, todo }) {
   const diaHoy = isoDia();
   const desde3 = isoDia(new Date(hoyMS - 89 * 86400000)) + 'T00:00';
   const hasta3 = isoDia(new Date(hoyMS + 86400000)) + 'T00:00';
-  const st3 = statsRango(desde3, hasta3, todo, S);
+  const st3 = statsRango(desde3, hasta3, txs, S);
   const ahorro3 = st3.ingreso - st3.gasto;
+  // alcance pasivo (tarjeta/deuda): la ficha cambia — deudas y pagos, no ingresos
+  const cuentaObj = cuentaScope ? S.cuentas.find(c => c.id === cuentaScope) : null;
+  const esPasiva = !!cuentaObj && (cuentaObj.tipo === 'tarjeta' || cuentaObj.tipo === 'deuda');
+  const pagosT = esPasiva
+    ? pagosTarjeta(cuentaObj, { txs: todo, tasas: S.tasas, principal, fijos: S.fijos, cuotas: S.cuotas, n: 2 })
+    : [];
+  const saldoT = esPasiva ? saldoCuenta(cuentaObj, todo, S.tasas) : 0;
   // El promedio divide entre los días REALMENTE usados: si la app empezó hace
   // una semana, no se reparte el gasto entre 90 días.
-  const primeraTx = todo.length
-    ? todo.reduce((a, t) => (t.fecha.slice(0, 10) < a ? t.fecha.slice(0, 10) : a), diaHoy)
+  const primeraTx = txs.length
+    ? txs.reduce((a, t) => (t.fecha.slice(0, 10) < a ? t.fecha.slice(0, 10) : a), diaHoy)
     : diaHoy;
   const desde3Dia = desde3.slice(0, 10);
   const desdeEfectivo = desde3Dia > primeraTx ? primeraTx : desde3Dia;
@@ -279,13 +320,37 @@ function VistaRango({ S, todo }) {
 
   return html`<div>
     <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
+    <${SelectorCuentas} S=${S} todo=${todo} cuentaScope=${cuentaScope} setCuentaScope=${setCuentaScope} />
 
+    ${esPasiva ? html`
+    <div class="stats-grid-3">
+      <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
+      <div class="stat-box"><div class="etq">Gasto / día</div><div class="val">${fmtFicha(Math.round(promDia))}</div></div>
+      <div class="stat-box"><div class="etq">Mayor gasto</div>
+        <div class="val" style=${{ fontSize: '13px', lineHeight: 1.35 }}>
+          ${catTop ? html`<span style=${{ display: 'inline-flex', alignItems: 'center', gap: '3px', justifyContent: 'center' }}>
+            <${IconoCategoria} emoji=${catTop.emoji} nombre=${catTop.nombre} />${catTop.nombre}</span>` : '—'}</div></div>
+    </div>
+    <div class="stats-grid-3">
+      <div class="stat-box"><div class="etq">Próximo pago</div>
+        <div class="val">${pagosT[0] ? fmtFicha(Math.round(pagosT[0].montoP)) : '—'}</div>
+        ${pagosT[0] && html`<div class="val" style=${{ color: 'var(--muted)', fontWeight: 600, marginTop: '1px' }}>${fmtDiaMes(pagosT[0].fecha)}</div>`}</div>
+      <div class="stat-box"><div class="etq">Siguiente</div>
+        <div class="val">${pagosT[1] ? fmtFicha(Math.round(pagosT[1].montoP)) : '—'}</div>
+        ${pagosT[1] && html`<div class="val" style=${{ color: 'var(--muted)', fontWeight: 600, marginTop: '1px' }}>${fmtDiaMes(pagosT[1].fecha)}</div>`}</div>
+      <div class="stat-box"><div class="etq">Crédito disponible</div>
+        ${cuentaObj.limite > 0
+          ? html`<div class="val" style=${{ color: cuentaObj.limite + saldoT < 0 ? 'var(--gasto)' : 'inherit' }}>${fmtFicha(Math.max(0, cuentaObj.limite + saldoT))}</div>
+              <div class="etq" style=${{ marginTop: '2px' }}>de ${fmtConMoneda(cuentaObj.limite, cuentaObj.moneda)}</div>`
+          : html`<div class="val">—</div>
+              <div class="etq" style=${{ marginTop: '2px' }}>ponle límite en Cuentas</div>`}
+      </div>
+    </div>` : html`
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
       <div class="stat-box"><div class="etq">Ingreso</div><div class="val m-ingreso">${fmtFicha(st.ingreso)}</div></div>
       <div class="stat-box"><div class="etq">Neto</div><div class="val" style=${{ color: st.neto >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${st.neto >= 0 ? '+' : '−'}${fmtFicha(Math.abs(st.neto))}</div></div>
     </div>
-
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">${ahorro3 >= 0 ? 'Ahorro' : 'Desahorro'}</div>
         <div class="val" style=${{ color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : '−'}${fmtFicha(Math.abs(ahorro3))}</div></div>
@@ -295,9 +360,10 @@ function VistaRango({ S, todo }) {
         <div class="val" style=${{ fontSize: '13px', lineHeight: 1.35 }}>
           ${catTop ? html`<span style=${{ display: 'inline-flex', alignItems: 'center', gap: '3px', justifyContent: 'center' }}>
             <${IconoCategoria} emoji=${catTop.emoji} nombre=${catTop.nombre} />${catTop.nombre}</span>` : '—'}</div></div>
-    </div>
+    </div>`}
 
-    <${TarjetaDia} serie=${serie} est=${est} etiqueta=${etiqueta} principal=${principal} />
+    <${TarjetaDia} serie=${serie} est=${est} etiqueta=${etiqueta} principal=${principal}
+      cuenta=${cuentaObj} S=${S} todo=${todo} />
 
     <div class="tarjeta">
       <h3>Por categoría</h3>
@@ -340,7 +406,7 @@ function VistaRango({ S, todo }) {
 
     <div class="tarjeta">
       <h3>Cuentas · ahora</h3>
-      ${S.cuentas.filter(c => !c.archivada).map(c => html`<div key=${c.id} class="fila">
+      ${S.cuentas.filter(c => !c.archivada && (!cuentaScope || c.id === cuentaScope)).map(c => html`<div key=${c.id} class="fila">
         <span class="emoji"><${IconoCuenta} tipo=${c.tipo} /></span>
         <div class="cuerpo"><div class="titulo">${c.nombre}</div><div class="sub">${c.moneda}</div></div>
         <div class="monto num" style=${{ color: saldoConvertido(c, todo, S.tasas, principal) < 0 ? 'var(--gasto)' : 'inherit' }}>
@@ -994,8 +1060,13 @@ const fmtFechaCorta = f => {
 /* ---------- Tarjeta carrusel: Día / Estructura / Fijos ----------
    Se puede deslizar horizontalmente o tocar las pestañas. La clasificación
    fijo/variable viene de estructuraRango (transacciones reales vs reglas fijas). */
-function TarjetaDia({ serie, est, etiqueta, principal }) {
-  const VISTAS = [['dia', 'Día'], ['estructura', 'Estructura'], ['cobertura', 'Fijos']];
+function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo }) {
+  // En alcance pasivo (tarjeta/deuda) el carrusel cuenta la historia de la
+  // deuda: gasto del período, compromiso de cuotas y deuda en el tiempo.
+  const pasiva = !!cuenta && (cuenta.tipo === 'tarjeta' || cuenta.tipo === 'deuda');
+  const VISTAS = pasiva
+    ? [['dia', 'Día'], ['cuotas', 'Cuotas'], ['deuda', 'Deuda']]
+    : [['dia', 'Día'], ['estructura', 'Estructura'], ['cobertura', 'Fijos']];
   const orden = VISTAS.map(v => v[0]);
   const [vista, setVista] = useState('dia');
   const cardRef = useRef(null);
@@ -1050,7 +1121,11 @@ function TarjetaDia({ serie, est, etiqueta, principal }) {
     };
   }, []);
 
-  const TITULOS = {
+  const TITULOS = pasiva ? {
+    dia: { dia: 'Gasto por día', semana: 'Gasto por semana', mes: 'Gasto por mes' }[serie.gran],
+    cuotas: 'Cuotas por mes',
+    deuda: 'Deuda en el tiempo',
+  } : {
     dia: { dia: 'Gasto por día', semana: 'Gasto por semana', mes: 'Gasto por mes' }[serie.gran],
     estructura: 'Fijo vs variable · ' + etiqueta,
     cobertura: 'Cobertura de tus fijos',
@@ -1078,6 +1153,13 @@ function TarjetaDia({ serie, est, etiqueta, principal }) {
             ? html`<${ChartGasto} datos=${serie.datos} principal=${principal} />`
             : html`<div class="vacio">Sin gastos en este período.</div>`}
         <//>
+        ${pasiva ? html`
+        <div class="carrusel-slide">
+          <${ChartCuotasMes} S=${S} cuenta=${cuenta} principal=${principal} />
+        <//>
+        <div class="carrusel-slide">
+          <${ChartDeuda} cuenta=${cuenta} S=${S} todo=${todo} principal=${principal} />
+        <//>` : html`
         <div class="carrusel-slide">
           ${barra('Ingresos fijos', est.fijoIn, 'var(--ingreso)', maxV)}
           ${barra('Ingresos variables', est.varIn, 'var(--ingreso)', maxV)}
@@ -1103,7 +1185,7 @@ function TarjetaDia({ serie, est, etiqueta, principal }) {
                 : 'Riesgo: vives mayormente de ingresos variables; si fallan, tus fijos no se cubren.'}
             <//>
           <//>`}
-        <//>
+        <//>`}
       <//>
     <//>
     <div class="carrusel-puntos">
@@ -1175,6 +1257,82 @@ function ChartGasto({ datos, principal }) {
       x=${Math.max(12, Math.min(W - 12, X(i)))} y=${H - 5} textAnchor="middle"
       style=${{ fontSize: '7px', fontWeight: d.esHoy ? 800 : 400 }} fill=${d.esHoy ? 'var(--accent)' : 'var(--muted)'}>${d.etq}</text>`; })}
   </svg>`;
+}
+
+/* Cuotas por mes (alcance tarjeta/deuda): compromiso mensual hacia adelante.
+   Los planes se agotan solos, así que las barras bajan solas hasta cero —
+   se ve cuándo quedas libre de compromisos. Ámbar: advertencia dulce. */
+function ChartCuotasMes({ S, cuenta, principal }) {
+  const datos = cuotasPorMes(cuenta.id, S.cuotas, S.tasas, principal, 6);
+  const hay = datos.some(d => d.total > 0);
+  if (!hay) return html`<div class="vacio">Sin cuotas activas: los planes que registres en Inicio (＋ Cuota) aparecerán aquí.</div>`;
+  const W = 320, H = 215, PL = 8, PR = 8, PT = 14, PB = 16;
+  const altoPlot = H - PT - PB;
+  const max = Math.max(1, ...datos.map(d => d.total));
+  const tope = max; // meses discretos: no hace falta redondear el tope
+  const X = i => PL + (i + 0.5) * (W - PL - PR) / datos.length;
+  const bw = Math.max(6, (W - PL - PR) / datos.length - 6);
+  const alto = v => v / tope * altoPlot;
+  const etqMes = clave => MESES3[+clave.slice(5, 7) - 1];
+  return html`<svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: 'auto', aspectRatio: `${W} / ${H}` }}>
+    ${[tope / 2, tope].map((v, i) => html`<line key=${i} x1=${PL} x2=${W - PR} y1=${H - PB - alto(v)} y2=${H - PB - alto(v)}
+      stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4" />`)}
+    <line x1=${PL} x2=${W - PR} y1=${H - PB} y2=${H - PB} stroke="var(--line)" stroke-width="1" />
+    ${datos.map((d, i) => html`<rect key=${i} x=${X(i) - bw / 2} y=${H - PB - alto(d.total)} width=${bw}
+      height=${Math.max(d.total > 0 ? 3 : 0, alto(d.total))} rx="3" fill="var(--warn)" opacity=${d.total ? .95 : 0}>
+      <title>${etqMes(d.clave)}: ${fmtConMoneda(d.total, principal)}</title>
+    <//>`)}
+    ${[tope / 2, tope].map((v, i) => html`<text key=${'y' + i} x=${PL + 2} y=${H - PB - alto(v) - 2.5}
+      style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtCompacto(v, principal)}</text>`)}
+    ${datos.map((d, i) => d.total > 0 && html`<text key=${'v' + i} x=${X(i)} y=${H - PB - alto(d.total) - 3}
+      textAnchor="middle" style=${{ fontSize: '6.5px', fontWeight: 700 }} fill="var(--warn)">${fmtCompacto(d.total, principal)}</text>`)}
+    ${datos.map((d, i) => html`<text key=${'x' + i} x=${X(i)} y=${H - 5} textAnchor="middle"
+      style=${{ fontSize: '7px' }} fill=${i === 0 ? 'var(--accent)' : 'var(--muted)'}>${etqMes(d.clave)}</text>`)}
+  <//>`;
+}
+
+/* Deuda en el tiempo (alcance tarjeta/deuda): línea del saldo negativo de la
+   cuenta, Y hacia arriba = más deuda. Rojo: la cuenta es deuda. */
+function ChartDeuda({ cuenta, S, todo, principal }) {
+  const desdeD = sumarMesClave(claveMesActual(), -5) + '-01';
+  const serie = serieSaldos({ cuentas: S.cuentas, txs: todo, tasas: S.tasas, principal, desdeD, hastaD: isoDia(), cuentaId: cuenta.id })
+    .map(p => ({ fecha: p.fecha, deuda: -p.balance }));
+  const hay = serie.some(p => p.deuda !== 0);
+  if (!hay) return html`<div class="vacio">Sin deuda en estos meses.</div>`;
+  const W = 320, H = 215, PL = 8, PR = 8, PT = 16, PB = 16;
+  const vals = serie.map(p => p.deuda);
+  const maxV = Math.max(...vals), minV = Math.min(...vals, 0);
+  const margen = (maxV - minV) * 0.08 || 1000;
+  const lo = minV - margen, hi = Math.max(maxV + margen, 1000);
+  const X = i => PL + i / (serie.length - 1 || 1) * (W - PL - PR);
+  const Y = v => PT + (1 - (v - lo) / (hi - lo)) * (H - PT - PB);
+  const paso = Math.max(1, Math.round(serie.length / 120));
+  const vis = serie.filter((_, i) => i % paso === 0 || i === serie.length - 1);
+  const linea = vis.map((p, i) => `${i ? 'L' : 'M'}${X(serie.indexOf(p)).toFixed(1)},${Y(p.deuda).toFixed(1)}`).join(' ');
+  const area = `M${X(serie.indexOf(vis[0]))},${Y(0).toFixed(1)} ` +
+    vis.map(p => `L${X(serie.indexOf(p)).toFixed(1)},${Y(p.deuda).toFixed(1)}`).join(' ') +
+    ` L${X(serie.length - 1)},${Y(0).toFixed(1)} Z`;
+  const marcas = [];
+  for (let i = 1; i < serie.length; i++) {
+    if (serie[i].fecha.slice(8, 10) === '01' && serie[i].fecha.slice(5, 7) !== serie[0].fecha.slice(5, 7)) {
+      marcas.push({ x: X(i), nom: MESES3[+serie[i].fecha.slice(5, 7) - 1] });
+    }
+  }
+  const ultimo = serie[serie.length - 1];
+  return html`<svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: 'auto', aspectRatio: `${W} / ${H}` }}>
+    <line x1=${PL} x2=${W - PR} y1=${Y(0)} y2=${Y(0)} stroke="var(--line)" stroke-width="1" />
+    ${hi * 0.75 > 0 && html`<line x1=${PL} x2=${W - PR} y1=${Y(hi / 2)} y2=${Y(hi / 2)} stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4" />`}
+    ${html`<text x=${PL + 2} y=${Y(hi / 2) - 2.5} style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtCompacto(hi / 2, principal)}</text>`}
+    <path d=${area} fill="var(--gasto)" opacity=".07" />
+    <path d=${linea} fill="none" stroke="var(--gasto)" stroke-width="2.2" stroke-linejoin="round" />
+    <circle cx=${X(serie.length - 1)} cy=${Y(ultimo.deuda)} r="3.6" fill="var(--gasto)">
+      <title>hoy: ${fmtConMoneda(ultimo.deuda, principal)}</title>
+    <//>
+    ${html`<text x=${Math.min(W - PR - 2, X(serie.length - 1) + 5)} y=${Math.max(10, Y(ultimo.deuda) - 5)}
+      textAnchor="end" style=${{ fontSize: '7px', fontWeight: 700 }} fill="var(--gasto)">hoy ${fmtCompacto(ultimo.deuda, principal)}</text>`}
+    ${marcas.filter((_, i) => i % 1 === 0).map((m, i) => html`<text key=${i} x=${m.x} y=${H - 5} textAnchor="middle"
+      style=${{ fontSize: '7px' }} fill="var(--muted)">${m.nom}</text>`)}
+  <//>`;
 }
 
 function Tendencia({ datos, max }) {

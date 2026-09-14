@@ -463,6 +463,80 @@ export function pagosCuota(plan, desdeD, hastaD) {
   return out;
 }
 
+/** Compromiso mensual de cuotas de una cuenta hacia adelante: total a pagar
+ *  cada uno de los siguientes `meses` meses. Los planes se agotan solos, así
+ *  que la serie baja sola — se ve cuándo quedas libre de compromisos. */
+export function cuotasPorMes(cuentaId, cuotas = [], tasas = [], principal, meses = 6, hoyD = isoDia()) {
+  const hoy = new Date(hoyD + 'T12:00');
+  const out = [];
+  for (let i = 0; i < meses; i++) {
+    const d0 = new Date(hoy.getFullYear(), hoy.getMonth() + i, 1);
+    const desde = `${d0.getFullYear()}-${p2f(d0.getMonth() + 1)}-01`;
+    const hasta = `${d0.getFullYear()}-${p2f(d0.getMonth() + 1)}-${p2f(diasDelMes(d0.getFullYear(), d0.getMonth()))}`;
+    let total = 0;
+    for (const p of (cuotas || []).filter(p => p.activa !== false && p.cuentaId === cuentaId)) {
+      for (const o of pagosCuota(p, desde, hasta)) total += convertir(o.monto, p.moneda, principal, tasas, o.fecha);
+    }
+    out.push({ clave: `${d0.getFullYear()}-${p2f(d0.getMonth() + 1)}`, total });
+  }
+  return out;
+}
+
+/** Próximos pagos de una tarjeta según su ciclo de corte: el pago cubre la
+ *  factura que cerró en el corte previo. El primero sale del saldo REAL al
+ *  cierre (menos el pendiente de cuotas, que se amortiza con su plan); los
+ *  siguientes proyectan solo los fijos cargados a la tarjeta en su ciclo. */
+export function pagosTarjeta(c, { txs, tasas, principal, fijos = [], cuotas = [], n = 2, hoyD = isoDia() }) {
+  if (!c.pagoDia) return [];
+  const ordenadas = [...txs].sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const saldoEn = fechaISO => {
+    let s = c.saldoInicial || 0;
+    for (const tx of ordenadas) {
+      if (tx.fecha.slice(0, 10) > fechaISO) break;
+      s += efectoTx(tx, c.id, tasas, c.moneda);
+    }
+    return s;
+  };
+  const pagos = [];
+  let y = +hoyD.slice(0, 4), m = +hoyD.slice(5, 7) - 1;
+  for (let i = 0; i < n + 1 && pagos.length <= n; i++) {
+    const pago = `${y}-${p2g(m + 1)}-${p2g(Math.min(c.pagoDia, diasDelMes(y, m)))}`;
+    if (pago >= hoyD && pagos.indexOf(pago) < 0) pagos.push(pago);
+    m++; if (m > 11) { m = 0; y++; }
+  }
+  pagos.length = n; // solo los próximos n
+  const cierreDe = pago => {
+    if (!c.corte) return null;
+    const dP = new Date(pago + 'T12:00');
+    const pc = c.pagoDia > c.corte ? 0 : 1;
+    const dm = new Date(dP.getFullYear(), dP.getMonth() - pc, 12);
+    return isoDia(new Date(dm.getFullYear(), dm.getMonth(), Math.min(c.corte, diasDelMes(dm.getFullYear(), dm.getMonth())), 12));
+  };
+  // cargos fijos a la tarjeta (fuente pasiva) con su fecha, para los ciclos siguientes
+  const cargos = [];
+  for (const r of (fijos || []).filter(r => r.activa !== false && r.fuente === c.id && r.tipo === 'gasto')) {
+    const montoP = convertir(r.monto, r.moneda, principal, tasas, hoyD);
+    const horizonte = `${+hoyD.slice(0, 4) + 1}-${hoyD.slice(5, 7)}-${hoyD.slice(8, 10)}`;
+    for (const fecha of fechasFijo(r, hoyD, horizonte)) cargos.push({ fecha, montoP });
+  }
+  let refPrev = null;
+  return pagos.map(pago => {
+    const ref = cierreDe(pago) || (refPrev || hoyD);
+    const pendienteCuotas = (cuotas || []).filter(p => p.activa !== false && p.cuentaId === c.id)
+      .reduce((s, p) => s + convertir(planCuotas(p, ref).pendiente, p.moneda, principal, tasas, ref), 0);
+    let montoP = refPrev === null
+      ? Math.max(0, -convertir(saldoEn(ref), c.moneda, principal, tasas, ref) - pendienteCuotas)
+      : 0;
+    for (const e of cargos) {
+      if (refPrev && e.fecha <= refPrev) continue;
+      if (ref && e.fecha > ref) continue;
+      montoP += e.montoP;
+    }
+    refPrev = ref;
+    return { fecha: pago, montoP };
+  }).filter(p => p.montoP > 0);
+}
+
 /**
  * Poder adquisitivo teórico: parte del dinero líquido de hoy (sin contar
  * tarjetas ni deudas — una deuda no impide pagar) y camina el calendario

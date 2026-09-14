@@ -98,7 +98,7 @@ export default function Hoy() {
 
     <div class="tarjeta">
       <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-        <h3 style=${{ marginBottom: 0 }}>Pagos programados</h3>
+        <h3 style=${{ marginBottom: 0 }}>Movimientos programados</h3>
         <div class="chips-scroll" style=${{ padding: 0 }}>
           <button class="chip" onClick=${() => setProgramadas({ tab: 'fijos' })}>＋ Fijos</button>
           <button class="chip" onClick=${() => setProgramadas({ tab: 'cuotas', nueva: true })}>＋ Cuota</button>
@@ -107,7 +107,7 @@ export default function Hoy() {
       <div class="dato-cuenta" style=${{ marginBottom: '6px' }}>
         Teórico · hoy: <b class="num">${fmtConMoneda(pa.base, principal)}</b> disponibles${fijosActivos.length ? '' : ' — configura tus ingresos y gastos fijos'}
       </div>
-      ${pa.rows.map(r => {
+      ${pa.rows.slice(0, 10).map(r => {
         const esDeuda = r.tipo === 'deuda';
         const fuenteC = esDeuda ? S.cuentas.find(c => c.id === r.fuente) : null;
         return html`<div key=${r.fecha + r.fijoId + r.nombre} class=${'fila fila-pago ' + (esDeuda ? '' : r.ok ? 'fila-pago-ok' : 'fila-pago-falta')}>
@@ -131,7 +131,8 @@ export default function Hoy() {
       ${pa.rows.some(r => !r.ok) && html`<div class="dato-cuenta" style=${{ marginTop: '6px', color: 'var(--warn)' }}>
         En amarillo, los pagos que tu dinero no cubre a tiempo.
       <//>`}
-      ${pa.rows.length > 0 && html`<div class="dato-cuenta" style=${{ marginTop: '6px' }}>Solo considera tus fijos — no los gastos de cada día.</div>`}
+      ${pa.rows.length > 10 && html`<div class="dato-cuenta" style=${{ marginTop: '6px' }}>Mostrando los próximos 10 — el resto vive en tus programas.</div>`}
+      ${pa.rows.length > 0 && html`<div class="dato-cuenta" style=${{ marginTop: '6px' }}>Solo considera tus fijos y cuotas — no los gastos de cada día.</div>`}
     </div>
 
     <div class="tarjeta">
@@ -150,7 +151,7 @@ export default function Hoy() {
       ${grupos.length === 0 && html`<div class="vacio">Aún no hay movimientos.<br/>Toca el botón <b>+</b> para registrar el primero.</div>`}
     </div>
 
-    ${programadas && html`<${Sheet} titulo="Pagos programados" onClose=${() => setProgramadas(null)}>
+    ${programadas && html`<${Sheet} titulo="Movimientos programados" onClose=${() => setProgramadas(null)}>
       <${PanelProgramadas} S=${S} tab=${programadas.tab} nueva=${programadas.nueva} cerrar=${() => setProgramadas(null)} />
     <//>`}
   </div>`;
