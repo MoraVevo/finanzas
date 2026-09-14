@@ -380,13 +380,10 @@ function VistaRango({ S, todo }) {
           : html`<div class="val">—</div>
               <div class="etq" style=${{ marginTop: '2px' }}>ponle límite en Cuentas</div>`}
       </div>
-      <div class="stat-box" style=${{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><div class="etq">Corte → Pago</div>
-        <div class="val" style=${{ display: 'inline-flex', alignItems: 'baseline', gap: '3px', justifyContent: 'center' }}>
-          <span style=${{ color: 'var(--muted)' }}>${cuentaObj.corte || '—'}</span>
-          <span style=${{ color: 'var(--muted)', fontSize: '12px', fontWeight: 600 }}>→</span>
-          <span style=${{ color: 'var(--accent)' }}>${cuentaObj.pagoDia || '—'}</span>
-        </div>
-        <div class="etq" style=${{ marginTop: 0 }}>cada mes</div></div>
+      <div style=${{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'center', gap: '26px', padding: '2px 0 0' }}>
+        <span class="dato-cuenta">Fecha corte: <b class="num" style=${{ color: 'var(--text)' }}>${cuentaObj.corte || '—'}</b></span>
+        <span class="dato-cuenta">Fecha pago: <b class="num" style=${{ color: 'var(--accent)' }}>${cuentaObj.pagoDia || '—'}</b></span>
+      </div>
     </div>` : html`
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
