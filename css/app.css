@@ -41,7 +41,9 @@
 }
 
 /* ============ Base ============ */
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* touch-action manipulation en todo: Safari ignora user-scalable=no y el
+   doble-tap hacía zoom, moviendo la barra de pestañas fija. */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 html, body { margin: 0; padding: 0; }
 html, body { overflow-x: hidden; overflow-x: clip; /* nada de scroll/paneo horizontal jamás */ }
 body {
@@ -95,6 +97,7 @@ input[type="datetime-local"], input[type="date"] {
 .tarjeta h3 {
   margin: 0 0 10px; font-size: 13px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .6px; color: var(--muted);
+  user-select: none; -webkit-user-select: none;
 }
 
 /* ============ Tab bar + FAB ============ */
@@ -105,6 +108,7 @@ input[type="datetime-local"], input[type="date"] {
   -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
   border-top: 1px solid var(--line);
   padding: 6px 10px calc(env(safe-area-inset-bottom, 0px) + 6px);
+  user-select: none; -webkit-user-select: none;
 }
 .tabbar .tab {
   flex: 1; max-width: 92px; display: flex; flex-direction: column; align-items: center; gap: 2px;
@@ -318,7 +322,7 @@ input[type="datetime-local"], input[type="date"] {
 /* Gráfica de flujo interactiva: 1 dedo desplaza (vertical = scroll de página), pellizco = zoom */
 .flujo-chart { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: grab; }
 .flujo-chart:active { cursor: grabbing; }
-.flujo-chart svg { display: block; width: 100%; height: 250px; }
+.flujo-chart svg { display: block; width: 100%; height: auto; aspect-ratio: 320 / 250; }
 .flujo-zoom { position: absolute; top: 2px; left: 2px; display: flex; gap: 4px; }
 .flujo-zoom button {
   width: 27px; height: 27px; border-radius: 9px; background: var(--chip);

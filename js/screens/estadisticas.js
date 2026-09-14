@@ -1,17 +1,153 @@
-// Estadísticas: dos vistas — "Mes" (cómo fue el mes) y "Flujo" (patrimonio en el
-// tiempo con los movimientos futuros que el usuario registra manualmente).
+// Estadísticas: dos vistas — "Resumen" (gasto/ingreso del período que elijas
+// con el filtro de fecha: presets o rango personalizado) y "Flujo" (patrimonio
+// en el tiempo con los movimientos futuros que el usuario registra manualmente).
 // La gráfica de flujo es interactiva: arrastra para mover, pellizca/botones para
 // zoom, con granularidad hasta diaria, y lectura al tocar.
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
-import { statsMes, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraMes, TIPOS_CUENTA } from '../model.js';
+import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
-import { fmtConMoneda, fmtMonto, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
+import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
+
+const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/* ---------- Filtro de período ---------- */
+const PRESETS_RANGO = [
+  ['mes', 'Este mes'],
+  ['mes-pasado', 'Mes pasado'],
+  ['3m', '3 meses'],
+  ['6m', '6 meses'],
+  ['anio', 'Este año'],
+];
+
+/** Preset -> [desde, hasta) en ISO local (hasta exclusivo). */
+function rangoPreset(tipo) {
+  const clave = claveMesActual();
+  const [dMes, hMes] = rangoMes(clave);
+  switch (tipo) {
+    case 'mes': return [dMes, hMes];
+    case 'mes-pasado': return rangoMes(sumarMesClave(clave, -1));
+    case '3m': return [sumarMesClave(clave, -2) + '-01T00:00', hMes];
+    case '6m': return [sumarMesClave(clave, -5) + '-01T00:00', hMes];
+    case 'anio': return [clave.slice(0, 4) + '-01-01T00:00', hMes];
+    default: return [dMes, hMes];
+  }
+}
+
+const diaDe = iso => iso.slice(0, 10);
+/** Último día INCLUSIVO de un rango cuyo 'hasta' es exclusivo. */
+const finInclusivo = hasta => isoDia(new Date(+deISO(hasta) - 86400000));
+const fmtDiaMes = iso => { const d = deISO(iso); return `${d.getDate()} ${MESES3[d.getMonth()]}`; };
+
+/** Etiqueta corta del período: "septiembre" / "2026" / "1 jul – 30 sep". */
+function etiquetaRango(desde, hasta) {
+  const d = diaDe(desde), h = finInclusivo(hasta);
+  if (d.slice(0, 7) === h.slice(0, 7)) return fmtMesLargo(d.slice(0, 7));
+  if (d.endsWith('-01-01') && h.endsWith('-12-31')) return d.slice(0, 4);
+  return `${fmtDiaMes(d)} – ${fmtDiaMes(h)}`;
+}
+
+/** Serie de gasto del período, agregada por día (≤2 meses), semana (≤2 años)
+ *  o mes. Cada punto trae etiqueta de eje, descripción larga y si contiene hoy. */
+function serieGasto(desde, hasta, porDia) {
+  const mapa = new Map(porDia.map(d => [d.dia, d.monto]));
+  const d0 = diaDe(desde), d1 = finInclusivo(hasta);
+  const t0 = +new Date(d0 + 'T12:00'), t1 = +new Date(d1 + 'T12:00');
+  const dias = Math.round((t1 - t0) / 86400000) + 1;
+  const gran = dias <= 60 ? 'dia' : dias <= 730 ? 'semana' : 'mes';
+  const hoy = isoDia();
+  const contieneHoy = iso => {
+    if (gran === 'mes') return hoy.startsWith(iso.slice(0, 7));
+    const t = +deISO(hoy), a = +deISO(iso);
+    return t >= a && t <= a + (gran === 'semana' ? 6 : 0) * 86400000;
+  };
+  const datos = [];
+  const empuja = (iso, monto) => {
+    const d = deISO(iso);
+    datos.push({
+      iso, monto,
+      esHoy: contieneHoy(iso),
+      mesNuevo: gran === 'mes' || (gran === 'dia' && d.getDate() === 1),
+      etq: gran === 'dia' ? (d.getDate() === 1 ? `1 ${MESES3[d.getMonth()]}` : String(d.getDate()))
+        : gran === 'semana' ? `${d.getDate()} ${MESES3[d.getMonth()]}`
+        : MESES3[d.getMonth()] + (d.getFullYear() !== +d0.slice(0, 4) ? ' ' + String(d.getFullYear()).slice(2) : ''),
+      largo: gran === 'mes' ? `${MESES3[d.getMonth()]} ${d.getFullYear()}` : `${d.getDate()} ${MESES3[d.getMonth()]} ${d.getFullYear()}`,
+    });
+  };
+  if (gran === 'dia') {
+    const cur = new Date(d0 + 'T12:00');
+    for (let i = 0; i < dias; i++, cur.setDate(cur.getDate() + 1)) {
+      const iso = isoDia(cur);
+      empuja(iso, mapa.get(iso) || 0);
+    }
+  } else if (gran === 'semana') {
+    const cur = new Date(d0 + 'T12:00');
+    cur.setDate(cur.getDate() - ((cur.getDay() + 6) % 7)); // alinea a lunes
+    for (; +cur <= t1; cur.setDate(cur.getDate() + 7)) {
+      let monto = 0;
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(cur); d.setDate(d.getDate() + i);
+        monto += mapa.get(isoDia(d)) || 0;
+      }
+      empuja(isoDia(cur), monto);
+    }
+  } else {
+    let y = +d0.slice(0, 4), m = +d0.slice(5, 7);
+    for (; y < +d1.slice(0, 4) || (y === +d1.slice(0, 4) && m <= +d1.slice(5, 7)); m++) {
+      if (m > 12) { m = 1; y++; }
+      const pre = `${y}-${String(m).padStart(2, '0')}`;
+      let monto = 0;
+      for (const [dia, v] of mapa) if (dia.startsWith(pre)) monto += v;
+      empuja(pre + '-01', monto);
+    }
+  }
+  return { gran, datos };
+}
+
+/** Chips de presets + rango personalizado (sheet con dos fechas). */
+function FiltroRango({ filtro, onFiltro }) {
+  const [abierto, setAbierto] = useState(false);
+  const [tmp, setTmp] = useState(null);
+  const esCustom = Array.isArray(filtro);
+  const abrir = () => {
+    const [d, h] = esCustom ? filtro : rangoPreset('mes');
+    setTmp({ desde: diaDe(d), hasta: diaDe(finInclusivo(h)) });
+    setAbierto(true);
+  };
+  const aplicar = () => {
+    if (!tmp.desde || !tmp.hasta) { toast('Elige ambas fechas'); return; }
+    let a = tmp.desde + 'T00:00', b = tmp.hasta + 'T00:00';
+    if (a.slice(0, 10) > b.slice(0, 10)) [a, b] = [b, a];
+    b = isoDia(new Date(+deISO(b) + 86400000)) + 'T00:00'; // hasta exclusivo
+    onFiltro([a, b]);
+    setAbierto(false);
+  };
+  return html`<div class="chips-scroll" style=${{ marginBottom: '12px' }}>
+    ${PRESETS_RANGO.map(([k, t]) => html`<button key=${k} class=${'chip' + (filtro === k ? ' sel' : '')}
+      onClick=${() => onFiltro(k)}>${t}</button>`)}
+    <button class=${'chip' + (esCustom ? ' sel' : '')} onClick=${abrir}>
+      ${esCustom ? `📅 ${etiquetaRango(filtro[0], filtro[1])}` : '📅 Fechas…'}
+    </button>
+    ${abierto && html`<${Sheet} titulo="Elegir período" onClose=${() => setAbierto(false)}>
+      <div style=${{ display: 'grid', gap: '10px' }}>
+        <div>
+          <div class="dato-cuenta" style=${{ marginBottom: '4px' }}>Desde</div>
+          <input type="date" value=${tmp.desde} onChange=${e => e.target.value && setTmp({ ...tmp, desde: e.target.value })} />
+        </div>
+        <div>
+          <div class="dato-cuenta" style=${{ marginBottom: '4px' }}>Hasta</div>
+          <input type="date" value=${tmp.hasta} onChange=${e => e.target.value && setTmp({ ...tmp, hasta: e.target.value })} />
+        </div>
+        <button class="btn btn-primario" onClick=${aplicar}>Aplicar</button>
+      </div>
+    <//>`}
+  </div>`;
+}
 
 export default function Estadisticas() {
   const S = useStore();
-  const [vista, setVista] = useState('mes');
+  const [vista, setVista] = useState('resumen');
   const [todo, setTodo] = useState(null); // todas las tx
   const [arrastre, setArrastre] = useState(null); // frac del drag de la vista
   const raizRef = useRef(null);
@@ -25,7 +161,7 @@ export default function Estadisticas() {
   }, [S.cuentas, S.ajustes, S.futuros]);
 
   // Deslizar desde cualquier zona sin gesto propio (resúmenes, tarjetas de
-  // categorías, encabezado…) también mueve la vista entre "Este mes" y "Flujo
+  // categorías, encabezado…) también mueve la vista entre "Resumen" y "Flujo
   // y futuro": el contenido sigue al dedo y al soltar, un arrastre decidido
   // cambia de vista. Las zonas con gesto horizontal propio (segmentados,
   // carrusel de la tarjeta, gráfica de flujo, hojas) se excluyen.
@@ -50,7 +186,7 @@ export default function Estadisticas() {
       }
       const vw = window.innerWidth || 1;
       let frac = -dx / vw;
-      const muerto = vistaRef.current === 'mes' ? dx > 0 : dx < 0;
+      const muerto = vistaRef.current === 'resumen' ? dx > 0 : dx < 0;
       if (muerto) frac *= 0.22; // resistencia al empujar más allá del límite
       setArrastre({ frac: Math.max(-1, Math.min(1, frac)) });
     };
@@ -62,8 +198,8 @@ export default function Estadisticas() {
       setArrastre(null);
       if (!fueH) return;
       const umbral = Math.max(60, (window.innerWidth || 1) * 0.16);
-      if (vistaRef.current === 'mes' && dx < -umbral) setVista('flujo');
-      else if (vistaRef.current === 'flujo' && dx > umbral) setVista('mes');
+      if (vistaRef.current === 'resumen' && dx < -umbral) setVista('flujo');
+      else if (vistaRef.current === 'flujo' && dx > umbral) setVista('resumen');
     };
     raiz.addEventListener('touchstart', ini, { passive: true });
     raiz.addEventListener('touchmove', mov, { passive: true });
@@ -82,41 +218,36 @@ export default function Estadisticas() {
   const f = arrastre ? arrastre.frac : 0;
   return html`<div class="vista" ref=${raizRef}>
     <div class="cabecera"><h1>Estadísticas</h1></div>
-    <${Segmentado} opciones=${[['mes', 'Este mes'], ['flujo', 'Flujo y futuro']]} valor=${vista} onChange=${setVista}
+    <${Segmentado} opciones=${[['resumen', 'Resumen'], ['flujo', 'Flujo y futuro']]} valor=${vista} onChange=${setVista}
       onArrastre=${frac => setArrastre({ frac })} onFin=${() => setArrastre(null)} />
     <div class=${arrastre ? '' : 'trans-vista'} style=${{
       transform: `translateX(${-f * 18}%)`,
       opacity: 1 - Math.abs(f) * 0.4
     }}>
-      ${vista === 'mes'
-        ? html`<${VistaMes} S=${S} todo=${todo} />`
+      ${vista === 'resumen'
+        ? html`<${VistaRango} S=${S} todo=${todo} />`
         : html`<${VistaFlujo} S=${S} todo=${todo} />`}
     <//>
   </div>`;
 }
 
-/* ================= Vista: Mes ================= */
-function VistaMes({ S, todo }) {
-  const [clave, setClave] = useState(claveMesActual());
+/* ================= Vista: Resumen (período elegible) ================= */
+function VistaRango({ S, todo }) {
+  const [filtro, setFiltro] = useState('mes'); // preset o [desde, hasta] personalizado
   const principal = S.ajustes.monedaPrincipal;
-  const [desde, hasta] = rangoMes(clave);
-  const st = statsMes(clave, todo.filter(t => t.fecha >= desde && t.fecha < hasta), S);
+  const [desde, hasta] = Array.isArray(filtro) ? filtro : rangoPreset(filtro);
+  const etiqueta = etiquetaRango(desde, hasta);
+  const st = statsRango(desde, hasta, todo, S);
+  const est = estructuraRango(desde, hasta, todo, S);
   const tend = tendencia(todo, S, 12);
   const p = patrimonio(S.cuentas, todo, S.tasas, principal);
   const presup = new Map(S.presupuestos.map(x => [x.categoria, x.monto]));
   const maxCat = Math.max(1, ...st.porCategoria.map(c => c.monto));
-  const maxDia = Math.max(1, ...st.porDia.map(d => d.monto));
   const maxTend = Math.max(1, ...tend.map(m => Math.max(m.gasto, m.ingreso)));
-  const diasMes = new Date(+clave.slice(0, 4), +clave.slice(5, 7), 0).getDate();
+  const serie = serieGasto(desde, hasta, st.porDia);
 
   return html`<div>
-    <div class="nav-mes">
-      <button onClick=${() => setClave(sumarMesClave(clave, -1))}>‹</button>
-      <span class="mes">${fmtMesLargo(clave)}</span>
-      ${clave !== claveMesActual()
-        ? html`<button onClick=${() => setClave(claveMesActual())}>Hoy</button>`
-        : html`<button style=${{ opacity: .3 }}>›</button>`}
-    </div>
+    <${FiltroRango} filtro=${filtro} onFiltro=${setFiltro} />
 
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtConMoneda(st.gasto, principal)}</div></div>
@@ -124,10 +255,10 @@ function VistaMes({ S, todo }) {
       <div class="stat-box"><div class="etq">Neto</div><div class="val" style=${{ color: st.neto >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${fmtConMoneda(st.neto, principal, true)}</div></div>
     </div>
     <div class="dato-cuenta" style=${{ textAlign: 'center', marginTop: '-8px', marginBottom: '10px' }}>
-      Montos en ${principal}. Transferencias entre tus cuentas no cuentan como gasto.
+      ${etiqueta} · Montos en ${principal}. Transferencias entre tus cuentas no cuentan como gasto.
     </div>
 
-    <${TarjetaDia} st=${st} est=${estructuraMes(clave, todo, S)} clave=${clave} principal=${principal} />
+    <${TarjetaDia} serie=${serie} est=${est} etiqueta=${etiqueta} principal=${principal} />
 
     <div class="tarjeta">
       <h3>Por categoría</h3>
@@ -141,7 +272,7 @@ function VistaMes({ S, todo }) {
           ${c.monto > presup.get(c.id) ? '⚠ excede' : 'de'} ${fmtConMoneda(presup.get(c.id), principal)} presupuestados
         <//>`}
       </div>`)}
-      ${st.porCategoria.length === 0 && html`<div class="vacio">Sin gastos este mes.</div>`}
+      ${st.porCategoria.length === 0 && html`<div class="vacio">Sin gastos en este período.</div>`}
     </div>
 
     ${st.porCategoriaIngreso.length > 0 && html`<div class="tarjeta">
@@ -605,7 +736,6 @@ function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
     else { e.in += montoP; e.out += (f.montoDestino ? convertir(f.montoDestino, f.monedaDestino || f.moneda, principal, S.tasas, f.fecha) : montoP); }
     porMes.set(clave, e);
   }
-  const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   const meses = [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   const max = Math.max(1, ...meses.flatMap(([, e]) => [e.in, e.out]));
   const W = 320, H = 170, PB = 26, PT = 8;
@@ -613,7 +743,7 @@ function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
 
   return html`<div>
     <h3 style=${{ fontSize: '11px' }}>Ingreso vs gasto proyectado · por mes</h3>
-    <svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: '170px' }}>
+    <svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: 'auto', aspectRatio: `${W} / ${H}` }}>
       ${meses.map(([clave, e], i) => {
         const hi = (H - PB - PT) * e.in / max;
         const ho = (H - PB - PT) * e.out / max;
@@ -626,7 +756,7 @@ function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
             <title>Gastos ${nomMes}: ${fmtConMoneda(e.out, principal)}</title>
           </rect>
           <text x=${i * bw + bw / 2} y=${H - 14} textAnchor="middle" style=${{ fontSize: '7px' }} fill="var(--muted)">${nomMes}</text>
-          ${i % 2 === 0 && html`<text x=${i * bw + bw / 2} y=${H - 4} textAnchor="middle" style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtMonto(Math.round(Math.max(e.in, e.out) / 1000) * 1000, 0)}</text>`}
+          ${i % 2 === 0 && html`<text x=${i * bw + bw / 2} y=${H - 4} textAnchor="middle" style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtCompacto(Math.max(e.in, e.out), principal)}</text>`}
         </g>`;
       })}
     </svg>
@@ -643,7 +773,6 @@ function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
    con zoom, meses ("sep", "sep 26" en ventanas largas). */
 function ChartFlujo({ fl, principal }) {
   const W = 320, H = 250, PL = 8, PR = 8, PT = 14, PB = 16;
-  const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
   const wrap = useRef(null);
   const punteros = useRef(new Map());
   const modo = useRef(null); // 'pan' | 'pinch' — fijo hasta soltar todos los dedos
@@ -691,7 +820,7 @@ function ChartFlujo({ fl, principal }) {
   const Y = v => PT + (1 - (v - lo) / (hi - lo)) * (H - PT - PB);
   const linea = pts => pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.fecha).toFixed(1)},${Y(p.balance).toFixed(1)}`).join(' ');
   const xHoy = X(fl.hoyD);
-  const compacto = v => Math.abs(v) >= 100000 ? (v / 100000).toFixed(1) + 'k' : fmtMonto(Math.round(v / 100) * 100, 0);
+  const compacto = v => fmtCompacto(v, principal);
 
   const zoom = factor => {
     const c = (tIni + tFin) / 2, span = (tFin - tIni) * factor;
@@ -814,15 +943,13 @@ const isoD2 = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0
 
 const fmtFechaCorta = f => {
   const d = deISO(f);
-  return `${d.getDate()} ${['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][d.getMonth()]}`;
+  return `${d.getDate()} ${MESES3[d.getMonth()]}`;
 };
-
-const diasMesDe = clave => new Date(+clave.slice(0, 4), +clave.slice(5, 7), 0).getDate();
 
 /* ---------- Tarjeta carrusel: Día / Estructura / Fijos ----------
    Se puede deslizar horizontalmente o tocar las pestañas. La clasificación
-   fijo/variable viene de estructuraMes (transacciones reales vs reglas fijas). */
-function TarjetaDia({ st, est, clave, principal }) {
+   fijo/variable viene de estructuraRango (transacciones reales vs reglas fijas). */
+function TarjetaDia({ serie, est, etiqueta, principal }) {
   const VISTAS = [['dia', 'Día'], ['estructura', 'Estructura'], ['cobertura', 'Fijos']];
   const orden = VISTAS.map(v => v[0]);
   const [vista, setVista] = useState('dia');
@@ -882,7 +1009,11 @@ function TarjetaDia({ st, est, clave, principal }) {
     };
   }, []);
 
-  const TITULOS = { dia: 'Gasto por día', estructura: 'Fijo vs variable · este mes', cobertura: 'Cobertura de tus fijos' };
+  const TITULOS = {
+    dia: { dia: 'Gasto por día', semana: 'Gasto por semana', mes: 'Gasto por mes' }[serie.gran],
+    estructura: 'Fijo vs variable · ' + etiqueta,
+    cobertura: 'Cobertura de tus fijos',
+  };
   useEffect(() => {
     const track = trackRef.current;
     if (!track) return;
@@ -903,8 +1034,9 @@ function TarjetaDia({ st, est, clave, principal }) {
     <div class="carrusel" style=${{ marginTop: '10px' }}>
       <div class="carrusel-track" ref=${trackRef}>
         <div class="carrusel-slide">
-          <${ChartDias} porDia=${st.porDia} diasMes=${diasMesDe(clave)} max=${Math.max(1, ...st.porDia.map(d => d.monto))}
-            principal=${principal} hoyDia=${clave === claveMesActual() ? deISO(isoDia()).getDate() : null} />
+          ${serie.datos.some(d => d.monto > 0)
+            ? html`<${ChartGasto} datos=${serie.datos} principal=${principal} />`
+            : html`<div class="vacio">Sin gastos en este período.</div>`}
         <//>
         <div class="carrusel-slide">
           ${barra('Ingresos fijos', est.fijoIn, 'var(--ingreso)', maxV)}
@@ -914,12 +1046,12 @@ function TarjetaDia({ st, est, clave, principal }) {
           <div class="dato-cuenta" style=${{ marginTop: '6px' }}>
             ${est.varOut > est.fijoOut && est.fijoOut > 0 ? 'Tus gastos fijos son bajos: lo fuerte está en lo variable — ahí está tu espacio de ahorro.'
               : est.fijoOut > est.varOut && est.fijoOut > 0 ? 'Tus gastos fijos dominan el mes: son tu base a cubrir sí o sí.'
-              : 'Sin gastos fijos registrados este mes.'}
+              : 'Sin gastos fijos registrados en este período.'}
           <//>
         <//>
         <div class="carrusel-slide" style=${{ textAlign: 'center', padding: '8px 0 4px' }}>
           ${!est.tieneReglas && html`<div class="vacio">Configura tus ingresos y gastos fijos en Inicio (＋ Fijos) para ver este análisis.</div>`}
-          ${est.tieneReglas && est.fijoOut === 0 && html`<div class="vacio">Este mes no tuviste gastos fijos: tus ingresos fijos quedaron enteros.</div>`}
+          ${est.tieneReglas && est.fijoOut === 0 && html`<div class="vacio">En este período no tuviste gastos fijos: tus ingresos fijos quedaron enteros.</div>`}
           ${est.tieneReglas && est.fijoOut > 0 && html`<div>
             <div style=${{ fontSize: '11.5px', color: 'var(--muted)', fontWeight: 600 }}>Tus ingresos fijos cubren</div>
             <div class="num" style=${{ fontSize: '34px', fontWeight: 800, color: r >= 100 ? 'var(--ingreso)' : r >= 80 ? 'var(--warn)' : 'var(--gasto)' }}>${r}%</div>
@@ -942,64 +1074,73 @@ function TarjetaDia({ st, est, clave, principal }) {
 }
 
 
-/* ---------- Gráficas de la vista Mes ---------- */
-function ChartDias({ porDia, diasMes, max, principal, hoyDia = null }) {
-  const porFecha = new Map(porDia.map(d => [d.dia.slice(8), d.monto]));
-  const W = 320, H = 150, PL = 30, PR = 6, PT = 12, PB = 16;
+/* ---------- Gráficas de la vista Resumen ---------- */
+/* Barras de gasto del período: el SVG escala proporcional al ancho (sin espacio
+   muerto lateral) y las etiquetas se formatean en la moneda real, no en
+   centavos. Eje Y dentro del área para alinear las barras con la tarjeta. */
+function ChartGasto({ datos, principal }) {
+  const W = 320, H = 185, PL = 8, PR = 8, PT = 14, PB = 16;
   const altoPlot = H - PT - PB;
+  const sim = monedaInfo(principal).simbolo;
   // tope "redondo" para que las etiquetas del eje Y sean legibles (ej. 2.5k)
   const niceCeil = v => {
     const p = 10 ** Math.floor(Math.log10(Math.max(1, v)));
     const n = v / p;
     return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
   };
+  const n = datos.length;
+  const max = Math.max(1, ...datos.map(d => d.monto));
   const tope = niceCeil(max);
   const alto = v => Math.max(2, v / tope * altoPlot);
-  const X = i => PL + (i + 0.5) * (W - PL - PR) / diasMes;
-  const bw = Math.max(2, (W - PL - PR) / diasMes - 2);
+  const X = i => PL + (i + 0.5) * (W - PL - PR) / n;
+  const bw = Math.max(2, (W - PL - PR) / n - 2);
+  const etqVal = v => (sim.length <= 2 ? sim : '') + fmtCompacto(v, principal);
 
   // valores sobre las barras: todos si hay pocos, si no solo los altos (el
   // máximo siempre) para que no se amontonen
-  const conMonto = Array.from({ length: diasMes }, (_, i) => i)
-    .filter(i => porFecha.get(String(i + 1).padStart(2, '0')) > 0);
-  const mostrar = new Set(conMonto.length <= 8 ? conMonto
-    : conMonto.filter(i => alto(porFecha.get(String(i + 1).padStart(2, '0'))) >= altoPlot * 0.55));
+  const conMonto = datos.map((d, i) => [i, d.monto]).filter(([, m]) => m > 0);
+  const mostrar = new Set(conMonto.length <= 8 ? conMonto.map(([i]) => i)
+    : conMonto.filter(([, m]) => alto(m) >= altoPlot * 0.55).map(([i]) => i));
   if (conMonto.length) {
-    const iMax = conMonto.reduce((a, b) =>
-      porFecha.get(String(b + 1).padStart(2, '0')) > porFecha.get(String(a + 1).padStart(2, '0')) ? b : a);
-    mostrar.add(iMax);
+    mostrar.add(conMonto.reduce((a, b) => (b[1] > a[1] ? b : a))[0]);
   }
-  const diasMarcados = [...new Set([1, 5, 10, 15, 20, 25, diasMes])].filter(d => d <= diasMes);
 
-  return html`<svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: '150px' }}>
-    ${[tope / 2, tope].map((v, i) => html`<g key=${'y' + i}>
-      <line x1=${PL} x2=${W - PR} y1=${H - PB - alto(v)} y2=${H - PB - alto(v)}
-        stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4" />
-      <text x=${PL - 4} y=${H - PB - alto(v) + 2.5} textAnchor="end" style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtMonto(v, 0)}</text>
-    </g>`)}
+  // marcas del eje X: equiespaciadas + inicios de mes + hoy, sin choques
+  const pasoX = Math.max(1, Math.ceil(n / 7));
+  const want = new Set();
+  datos.forEach((d, i) => { if (i % pasoX === 0 || d.mesNuevo || d.esHoy) want.add(i); });
+  const marcasX = [];
+  for (const i of [...want].sort((a, b) => a - b)) {
+    if (!marcasX.length || X(i) - X(marcasX[marcasX.length - 1]) >= 26) marcasX.push(i);
+  }
+  const ticksY = [tope / 2, tope];
+
+  return html`<svg viewBox=${`0 0 ${W} ${H}`}
+    style=${{ width: '100%', height: 'auto', aspectRatio: `${W} / ${H}` }}>
+    ${ticksY.map((v, i) => html`<line key=${'g' + i} x1=${PL} x2=${W - PR} y1=${H - PB - alto(v)} y2=${H - PB - alto(v)}
+      stroke="var(--line)" stroke-width="1" stroke-dasharray="3 4" />`)}
     <line x1=${PL} x2=${W - PR} y1=${H - PB} y2=${H - PB} stroke="var(--line)" stroke-width="1" />
-    ${Array.from({ length: diasMes }, (_, i) => {
-      const v = porFecha.get(String(i + 1).padStart(2, '0')) || 0;
-      const h = alto(v);
-      return html`<g key=${i}>
-        <rect x=${X(i) - bw / 2} y=${H - PB - h} width=${bw} height=${h} rx="2.5"
-          fill=${v ? 'var(--accent)' : 'var(--chip)'} opacity=${v ? 1 : .55}>
-          <title>Día ${i + 1}: ${fmtConMoneda(v, principal)}</title>
-        </rect>
-        ${mostrar.has(i) && html`<text x=${X(i)} y=${H - PB - h - 3} textAnchor="middle"
-          style=${{ fontSize: '6.5px', fontWeight: 700 }} fill="var(--accent)">${fmtMonto(v, 0)}</text>`}
-      </g>`;
+    ${datos.map((d, i) => {
+      const h = alto(d.monto);
+      return html`<rect key=${i} x=${X(i) - bw / 2} y=${H - PB - h} width=${bw} height=${h} rx="2.5"
+        fill=${d.monto ? 'var(--accent)' : 'var(--chip)'} opacity=${d.monto ? 1 : .55}>
+        <title>${d.largo}: ${fmtConMoneda(d.monto, principal)}</title>
+      <//>`;
     })}
-    ${diasMarcados.map(d => html`<text key=${'d' + d} x=${d === 1 ? PL + 1 : d === diasMes ? W - PR - 1 : X(d - 1)}
-      y=${H - 5} textAnchor=${d === 1 ? 'start' : d === diasMes ? 'end' : 'middle'}
-      style=${{ fontSize: '7px', fontWeight: hoyDia === d ? 800 : 400 }} fill=${hoyDia === d ? 'var(--accent)' : 'var(--muted)'}>${d}</text>`)}
+    ${ticksY.map((v, i) => html`<text key=${'y' + i} x=${PL + 2} y=${H - PB - alto(v) - 2.5}
+      style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtCompacto(v, principal)}</text>`)}
+    ${[...mostrar].map(i => html`<text key=${'v' + i} x=${Math.max(14, Math.min(W - 14, X(i)))} y=${H - PB - alto(datos[i].monto) - 3}
+      textAnchor="middle" style=${{ fontSize: '6.5px', fontWeight: 700 }} fill="var(--accent)">${etqVal(datos[i].monto)}</text>`)}
+    ${marcasX.map(i => { const d = datos[i]; return html`<text key=${'x' + i}
+      x=${Math.max(12, Math.min(W - 12, X(i)))} y=${H - 5} textAnchor="middle"
+      style=${{ fontSize: '7px', fontWeight: d.esHoy ? 800 : 400 }} fill=${d.esHoy ? 'var(--accent)' : 'var(--muted)'}>${d.etq}</text>`; })}
   </svg>`;
 }
 
 function Tendencia({ datos, max }) {
   const W = 320, H = 110, n = datos.length, bw = W / n;
   const alto = v => v / max * (H - 22);
-  return html`<svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: '110px' }}>
+  return html`<svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: 'auto', aspectRatio: `${W} / ${H}` }}>
     ${datos.map((m, i) => {
       const cx = i * bw;
       const hg = alto(m.gasto), hi = alto(m.ingreso);

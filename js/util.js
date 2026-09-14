@@ -97,6 +97,18 @@ export const fmtConMoneda = (entero, codigo, conSigno = false) => {
   return `${m.simbolo}${fmtMonto(entero, m.dec, conSigno)}`;
 };
 
+/** Monto compacto para ejes de gráfica: los enteros viven en unidades mínimas,
+ *  así que primero se dividen según la moneda (20000 centavos → "200", no
+ *  "20,000") y luego se abrevian miles: 250, 2.5k, 48k. */
+export function fmtCompacto(entero, codigo) {
+  const v = entero / 10 ** monedaInfo(codigo).dec;
+  const a = Math.abs(v);
+  const t = a >= 1000
+    ? (a / 1000).toFixed(a >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k'
+    : String(Math.round(a));
+  return (v < 0 ? '−' : '') + t;
+}
+
 /** Comprime una imagen a JPEG razonable para guardar comprobantes */
 export function comprimirImagen(archivo, maxLado = 1400, calidad = 0.78) {
   return new Promise((resolve, reject) => {

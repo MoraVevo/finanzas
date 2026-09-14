@@ -72,15 +72,15 @@ export function patrimonio(cuentas, txs, tasas, principal) {
   return { total, deudas, disponible: total + deudas }; // disponible = activos sin contar deudas
 }
 
-/** Estadísticas de un mes. Las transferencias quedan fuera de gasto/ingreso.
- *  Acepta el store completo (S): la moneda principal se toma de ajustes si no
- *  viene explícita. */
-export function statsMes(clave, txs, { categorias, tasas, ajustes, principal }) {
+/** Estadísticas de un rango [desde, hasta) en ISO local. Las transferencias
+ *  quedan fuera de gasto/ingreso. Acepta el store completo (S). */
+export function statsRango(desde, hasta, txs, { categorias, tasas, ajustes, principal }) {
   principal = principal || ajustes?.monedaPrincipal || 'GTQ';
+  const enRango = txs.filter(t => t.fecha >= desde && t.fecha < hasta);
   const catPorId = new Map(categorias.map(c => [c.id, c]));
   const porCategoria = new Map(), porCategoriaIngreso = new Map(), porEtiqueta = new Map(), porDia = new Map();
   let gasto = 0, ingreso = 0, transferencias = 0;
-  for (const tx of txs) {
+  for (const tx of enRango) {
     const montoP = convertir(tx.monto, tx.moneda, principal, tasas, tx.fecha);
     if (tx.tipo === 'gasto') {
       gasto += montoP;
@@ -102,11 +102,17 @@ export function statsMes(clave, txs, { categorias, tasas, ajustes, principal }) 
     emoji: id === '_sin' ? '❓' : (catPorId.get(id)?.emoji || '🏷️'),
   })).sort((a, b) => b.monto - a.monto);
   return {
-    clave, gasto, ingreso, transferencias, neto: ingreso - gasto,
+    gasto, ingreso, transferencias, neto: ingreso - gasto,
     porCategoria: aLista(porCategoria), porCategoriaIngreso: aLista(porCategoriaIngreso),
     porEtiqueta: aLista(porEtiqueta),
     porDia: [...porDia.entries()].map(([dia, monto]) => ({ dia, monto })).sort((a, b) => a.dia.localeCompare(b.dia)),
   };
+}
+
+/** Estadísticas de un mes (clave 'YYYY-MM'). */
+export function statsMes(clave, txs, S) {
+  const [desde, hasta] = rangoMes(clave);
+  return statsRango(desde, hasta, txs, S);
 }
 
 /** Gasto e ingreso de los últimos N meses (inclusive el actual). */
@@ -368,13 +374,12 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], d
   return { base, rows, hastaD: finD };
 }
 
-/** Estructura del mes: clasifica transacciones reales en fijos y variables.
- *  Una transacción cuenta como fija si coincide con alguna regla activa
- *  (mismo tipo y monto equivalente dentro de ±1%). */
-export function estructuraMes(clave, txs, S) {
+/** Estructura de un rango [desde, hasta): clasifica transacciones reales en
+ *  fijos y variables. Una transacción cuenta como fija si coincide con alguna
+ *  regla activa (mismo tipo y monto equivalente dentro de ±1%). */
+export function estructuraRango(desde, hasta, txs, S) {
   const principal = S.ajustes.monedaPrincipal;
   const tasas = S.tasas || [];
-  const [desde, hasta] = rangoMes(clave);
   const reglas = (S.fijos || []).filter(f => f.activa !== false);
   const montoDe = (monto, moneda, fecha) => convertir(monto, moneda, principal, tasas, fecha);
   let fijoIn = 0, varIn = 0, fijoOut = 0, varOut = 0;
@@ -390,4 +395,10 @@ export function estructuraMes(clave, txs, S) {
     else { if (esFijo(tx)) fijoOut += mp; else varOut += mp; }
   }
   return { fijoIn, varIn, fijoOut, varOut, tieneReglas: reglas.length > 0 };
+}
+
+/** Estructura de un mes (clave 'YYYY-MM'). */
+export function estructuraMes(clave, txs, S) {
+  const [desde, hasta] = rangoMes(clave);
+  return estructuraRango(desde, hasta, txs, S);
 }
