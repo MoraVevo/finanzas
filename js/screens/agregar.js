@@ -276,7 +276,11 @@ export default function Agregar({ txId }) {
       <div class="pa-conv">
         ${conversionCuenta ? `≈ ${conversionCuenta} en ${cuentaObj.nombre}`
           : conversionPrincipal ? `≈ ${conversionPrincipal}`
-          : (datos.tipo === 'transferencia' ? 'Mueve dinero entre tus cuentas · no es gasto' : ' ')}
+          : (datos.tipo === 'transferencia'
+            ? (destinoObj?.tipo === 'tercero' ? 'Sale de tu patrimonio · acumula en la cuenta de terceros'
+              : cuentaObj?.tipo === 'tercero' ? 'Entra a tu patrimonio · no es ingreso'
+              : 'Mueve dinero entre tus cuentas · no es gasto')
+            : ' ')}
       </div>
       <button class="btn btn-primario" disabled=${!puede} onClick=${guardar}>
         ${datos.editando ? 'Guardar cambios' : 'Guardar'}

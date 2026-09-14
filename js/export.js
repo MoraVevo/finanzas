@@ -118,7 +118,7 @@ export async function copiarParaIA({ meses = 3, tasas, principal, cuentas, categ
 
   const paquete = {
     contexto: 'Registro personal de finanzas. Moneda principal para reportes: ' + principal +
-      '. "tipo": gasto consume dinero; ingreso lo aporta; transferencia mueve entre cuentas propias y NO es gasto ni ingreso. Los montos con "_p" ya están convertidos a la moneda principal.',
+      '. "tipo": gasto consume dinero; ingreso lo aporta; transferencia mueve entre cuentas (propias o de terceros) y NO es gasto ni ingreso. Las cuentas tipo "tercero" no son del usuario: su saldo acumula lo depositado y queda fuera del patrimonio. Los montos con "_p" ya están convertidos a la moneda principal.',
     moneda_principal: principal,
     tasas_de_cambio_usadas: tasas.map(t => ({ de: t.de, a: t.a, valor: t.valor, fecha: t.fecha })),
     patrimonio_actual: (() => {

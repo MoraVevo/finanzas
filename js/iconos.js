@@ -162,6 +162,8 @@ const CONTENIDO_CUENTA = {
     <path d="M6.6 14.9h4" />`,
   deuda: html`<path d="M4.2 6.6 9.4 12l3.3-3.3 7 7" />
     <path d="M19.7 15.7v-4.6M19.7 15.7h-4.6" />`,
+  tercero: html`<circle cx="12" cy="8.1" r="3.2" />
+    <path d="M5.9 19.6c.8-3.2 3.2-4.9 6.1-4.9s5.3 1.7 6.1 4.9" />`,
 };
 
 /** Icono de tipo de cuenta (efectivo, bancaria, ahorro, tarjeta, deuda). */

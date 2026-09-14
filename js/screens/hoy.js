@@ -3,7 +3,7 @@
 import { html, useState, useEffect } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
-import { patrimonio, saldoConvertido, saldoCuenta, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo, planCuotas } from '../model.js';
+import { patrimonio, saldoConvertido, saldoCuenta, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo, planCuotas, cuentaEnPatrimonio } from '../model.js';
 import { FilaTx, Sheet, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_AJUSTES } from '../iconos.js';
 import { fmtConMoneda, fmtFecha, claveMesActual, rangoMes, fmtMesLargo, uid, textoAEntero, enteroATexto, isoDia } from '../util.js';
@@ -62,7 +62,7 @@ export default function Hoy() {
         ${p.deudas > 0 && html` · Deudas <b class="num" style=${{ color: 'var(--gasto)' }}>−${fmtConMoneda(p.deudas, principal)}</b>`}
       </div>
       <div class="chips-scroll" style=${{ marginTop: '12px', justifyContent: 'center' }}>
-        ${S.cuentas.filter(c => !c.archivada).map(c => html`
+        ${S.cuentas.filter(cuentaEnPatrimonio).map(c => html`
           <button key=${c.id} class="chip" onClick=${() => nav('#/cuentas')}>
             <${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}
             <span class="num" style=${{ color: saldoConvertido(c, txs, S.tasas, principal) < 0 ? 'var(--gasto)' : 'inherit' }}>

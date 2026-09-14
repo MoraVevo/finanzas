@@ -10,7 +10,12 @@ export const TIPOS_CUENTA = {
   ahorro: { emoji: '🏺', nombre: 'Ahorros' },
   tarjeta: { emoji: '💳', nombre: 'Tarjeta de crédito' },
   deuda: { emoji: '📉', nombre: 'Deuda / préstamo' },
+  tercero: { emoji: '🤝', nombre: 'De terceros' },
 };
+
+/** Cuentas que componen tu patrimonio: activas y propias. Las de terceros
+ *  acumulan lo depositado, pero ese dinero no es tuyo. */
+export const cuentaEnPatrimonio = c => !!c && !c.archivada && c.tipo !== 'tercero';
 
 /**
  * Efecto de una transacción sobre una cuenta, en la moneda de esa cuenta.
@@ -61,10 +66,11 @@ export function convertir(entero, desde, hacia, tasas, fechaISO = '9999') {
 export const saldoConvertido = (cuenta, txs, tasas, principal) =>
   convertir(saldoCuenta(cuenta, txs, tasas), cuenta.moneda, principal, tasas);
 
-/** Patrimonio (todas las cuentas), total de deudas (tarjetas + deudas, saldos negativos). */
+/** Patrimonio (solo cuentas propias; terceros quedan fuera), total de deudas
+ *  (tarjetas + deudas, saldos negativos). */
 export function patrimonio(cuentas, txs, tasas, principal) {
   let total = 0, deudas = 0;
-  for (const c of cuentas.filter(c => !c.archivada)) {
+  for (const c of cuentas.filter(cuentaEnPatrimonio)) {
     const s = saldoConvertido(c, txs, tasas, principal);
     total += s;
     if (s < 0) deudas += -s;
@@ -163,7 +169,7 @@ const finDeMes = (y, m) => new Date(y, m + 1, 0).getDate(); // m: 0-11
  */
 export function patrimonioEn(cuentas, txs, tasas, principal, fechaISO) {
   let total = 0;
-  for (const c of cuentas.filter(c => !c.archivada)) {
+  for (const c of cuentas.filter(cuentaEnPatrimonio)) {
     let s = c.saldoInicial || 0;
     for (const tx of txs) {
       if (tx.fecha.slice(0, 10) > fechaISO) break;
@@ -209,13 +215,13 @@ export function fechasRepetir(fechaBase, frecuencia, n = 6) {
 
 /**
  * Serie DIARIA de saldos reales (en moneda principal) entre dos fechas.
- * cuentaId null = patrimonio total (cuentas activas); si no, esa cuenta sola.
+ * cuentaId null = patrimonio total (cuentas propias activas); si no, esa cuenta sola.
  * Un solo recorrido de transacciones: rápida incluso con años de historial.
  */
 export function serieSaldos({ cuentas, txs, tasas, principal, desdeD, hastaD, cuentaId = null }) {
   const lista = cuentaId
     ? cuentas.filter(c => c.id === cuentaId)
-    : cuentas.filter(c => !c.archivada);
+    : cuentas.filter(cuentaEnPatrimonio);
   const ordenadas = [...txs].sort((a, b) => a.fecha.localeCompare(b.fecha));
 
   // saldo de cada cuenta al día "desdeD" (transacciones anteriores ya aplicadas)
@@ -559,7 +565,7 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], c
   const hoyD = isoDia();
   const finD = (() => { const d = new Date(hoyD + 'T12:00'); d.setDate(d.getDate() + dias); return isoDia(d); })();
   let base = 0;
-  for (const c of cuentas.filter(c => !c.archivada && c.tipo !== 'tarjeta' && c.tipo !== 'deuda')) {
+  for (const c of cuentas.filter(c => cuentaEnPatrimonio(c) && c.tipo !== 'tarjeta' && c.tipo !== 'deuda')) {
     base += convertir(saldoCuenta(c, txs, tasas), c.moneda, principal, tasas, hoyD);
   }
   const ordenadas = [...txs].sort((a, b) => a.fecha.localeCompare(b.fecha));

@@ -44,6 +44,7 @@ export default function Cuentas() {
         <div class="cuerpo">
           <div class="titulo">${c.nombre}</div>
           <div class="sub">${[
+            c.tipo === 'tercero' && 'No es tuyo · acumula depósitos',
             c.banco, c.numero && '№ ' + c.numero,
             c.tipo === 'tarjeta' && c.limite > 0 && `Disponible ${fmtConMoneda(Math.max(0, c.limite + saldoCuenta(c, txs, S.tasas)), c.moneda)}`,
             c.tipo === 'tarjeta' && c.corte && `Corte ${c.corte}`,
@@ -73,7 +74,9 @@ export default function Cuentas() {
         💳 Las <b>tarjetas</b> y <b>deudas</b> van en negativo: registrar un gasto con ellas aumenta tu deuda,
         y pagarlas es una <b>transferencia</b> desde tu banco — nunca un gasto doble.<br/>
         🔁 Sacar efectivo del cajero también es una transferencia.<br/>
-        🏺 El <b>ahorro</b> es dinero tuyo: moverlo ahí no es un gasto.
+        🏺 El <b>ahorro</b> es dinero tuyo: moverlo ahí no es un gasto.<br/>
+        🤝 Las cuentas <b>de terceros</b> guardan los datos de otra persona: depositarles es una
+        transferencia que sale de tu patrimonio y acumula cuánto le has depositado.
       </div>
     </div>
 
@@ -267,15 +270,19 @@ function EditorCuenta({ c, S, cerrar, alGuardar }) {
       ${Object.entries(TIPOS_CUENTA).map(([k, v]) => html`
         <button key=${k} class=${'chip' + (f.tipo === k ? ' sel' : '')} onClick=${() => set({ tipo: k })}><${IconoCuenta} tipo=${k} /> ${v.nombre}</button>`)}
     </div>
+    ${f.tipo === 'tercero' && html`<div class="dato-cuenta" style=${{ marginBottom: '10px' }}>
+      🤝 No es tu dinero: transferir a esta cuenta no cuenta como gasto, pero sí sale de tu
+      patrimonio. Su saldo acumula todo lo depositado.
+    <//>`}
     <div style=${{ display: 'grid', gap: '8px' }}>
-      <input placeholder="Nombre (ej. BAC, Efectivo, Visa…)" value=${f.nombre} onInput=${e => set({ nombre: e.target.value })} />
+      <input placeholder=${f.tipo === 'tercero' ? 'Nombre (ej. Juan, Mamá, Tienda Ana…)' : 'Nombre (ej. BAC, Efectivo, Visa…)'} value=${f.nombre} onInput=${e => set({ nombre: e.target.value })} />
       <div style=${{ display: 'flex', gap: '8px' }}>
         <div style=${{ flex: 1 }}>
           <div class="dato-cuenta">Moneda</div>
           <${SelectorMoneda} valor=${f.moneda} onChange=${moneda => set({ moneda })} />
         <//>
         <div style=${{ flex: 1 }}>
-          <div class="dato-cuenta">${pasivo ? 'Deuda actual' : 'Saldo inicial'}</div>
+          <div class="dato-cuenta">${pasivo ? 'Deuda actual' : f.tipo === 'tercero' ? 'Depositado antes (opcional)' : 'Saldo inicial'}</div>
           <input inputMode="decimal" placeholder="0.00" value=${f.saldo} style=${{ textAlign: 'right' }}
             onInput=${e => set({ saldo: e.target.value })} />
         <//>
