@@ -1112,23 +1112,25 @@ function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, v
   const trackRef = useRef(null);
   const vistaRef = useRef(vista);
   vistaRef.current = vista;
-  // Swipe que SIGUE AL DEDO: el carrusel va con el dedo y al soltar, un
-  // arrastre decidido pasa a la vista contigua. Sin pestañas de encabezado:
-  // se navega deslizando o tocando los puntos inferiores.
+  // Swipe que SIGUE AL DEDO con pointer events (patrón probado en iOS por el
+  // Segmentado y el Sheet): el carrusel va con el dedo y al soltar, un
+  // arrastre decidido pasa a la vista contigua. Se navega deslizando o
+  // tocando los puntos inferiores.
   useEffect(() => {
     const card = cardRef.current;
     const track = trackRef.current;
     if (!card || !track) return;
-    let x0 = null, y0 = null, idx0 = 0, w = 1;
-    const ini = e => {
-      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+    let activo = false, x0 = 0, y0 = 0, idx0 = 0, w = 1;
+    const abajo = e => {
+      if (!e.isPrimary) return;
+      activo = true; x0 = e.clientX; y0 = e.clientY;
       w = card.getBoundingClientRect().width || 1;
       idx0 = orden.indexOf(vistaRef.current);
+      try { card.setPointerCapture(e.pointerId); } catch { /* sin captura: el gesto igual funciona */ }
     };
-    const mov = e => {
-      if (x0 == null) return;
-      const dx = e.touches[0].clientX - x0;
-      const dy = e.touches[0].clientY - y0;
+    const mover = e => {
+      if (!activo || !e.isPrimary) return;
+      const dx = e.clientX - x0, dy = e.clientY - y0;
       if (Math.abs(dx) < 8 || Math.abs(dy) > Math.abs(dx)) return; // scroll vertical gana
       // sin asomar más allá de los extremos: d negativo asoma la siguiente,
       // positivo la anterior
@@ -1136,10 +1138,10 @@ function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, v
       track.style.transition = 'none';
       track.style.transform = `translateX(calc(${-idx0 * 100}% + ${d}px))`;
     };
-    const fin = e => {
-      if (x0 == null) return;
-      const d = e.changedTouches[0].clientX - x0;
-      x0 = null;
+    const soltar = e => {
+      if (!activo) return;
+      activo = false;
+      const d = e.clientX - x0;
       track.style.transition = '';
       const umbral = Math.max(50, w * 0.18);
       const target = Math.abs(d) > umbral
@@ -1148,17 +1150,19 @@ function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, v
       track.style.transform = `translateX(-${target * 100}%)`;
       if (target !== idx0) setVista(orden[target]);
     };
-    card.addEventListener('touchstart', ini, { passive: true });
-    card.addEventListener('touchmove', mov, { passive: true });
-    card.addEventListener('touchend', fin);
-    card.addEventListener('touchcancel', fin);
+    card.addEventListener('pointerdown', abajo);
+    card.addEventListener('pointermove', mover);
+    card.addEventListener('pointerup', soltar);
+    card.addEventListener('pointercancel', soltar);
     return () => {
-      card.removeEventListener('touchstart', ini);
-      card.removeEventListener('touchmove', mov);
-      card.removeEventListener('touchend', fin);
-      card.removeEventListener('touchcancel', fin);
+      card.removeEventListener('pointerdown', abajo);
+      card.removeEventListener('pointermove', mover);
+      card.removeEventListener('pointerup', soltar);
+      card.removeEventListener('pointercancel', soltar);
     };
-  }, []);
+    // re-vincular cuando cambia el tipo de alcance: `orden` vive en esta
+    // clausura y debe coincidir siempre con las vistas actuales
+  }, [pasiva]);
 
   const TITULOS = pasiva ? {
     dia: { dia: 'Gasto por día', semana: 'Gasto por semana', mes: 'Gasto por mes' }[serie.gran],
