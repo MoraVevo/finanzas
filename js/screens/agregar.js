@@ -151,12 +151,12 @@ export default function Agregar({ txId }) {
     if (d.editando) {
       [...d.existentes, ...d.nuevas].forEach(a => URL.revokeObjectURL(a.url));
       toast('✓ Cambios guardados');
-      nav(getState().routeAnterior || '#/');
     } else {
       d.nuevas.forEach(a => URL.revokeObjectURL(a.url));
       toast(`✓ ${ETIQUETA_TIPO[d.tipo]} de ${fmtConMoneda(entero, monedaFinal)} guardado`);
-      setDatos({ ...d, montoStr: '', categoria: null, etiquetas: [], motivo: '', fecha: isoLocal(), nuevas: [], existentes: [] });
     }
+    // al guardar siempre cerramos: el usuario vuelve a donde estaba
+    nav(getState().routeAnterior || '#/');
   };
 
   const eliminar = async () => {

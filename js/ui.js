@@ -11,6 +11,7 @@ import { fmtConMoneda, fmtFecha, fmtHora, isoLocal, isoDia } from './util.js';
    passive:false): máxima fiabilidad en iOS, sin depender de delegación. */
 export function Sheet({ titulo, onClose, children }) {
   const zonaRef = useRef(null);
+  const sheetRef = useRef(null);
 
   useEffect(() => {
     if (!onClose) return;
@@ -70,8 +71,56 @@ export function Sheet({ titulo, onClose, children }) {
     };
   }, [onClose]);
 
+  /* Cuerpo de la hoja: deslizar hacia abajo desde cualquier zona SIN elemento
+     propio (inputs, botones, chips, teclado…) también la cierra — solo cuando
+     el contenido está en el tope y el gesto es claramente hacia abajo. */
+  useEffect(() => {
+    const sheet = sheetRef.current;
+    if (!sheet || !onClose) return;
+    const EXCLUYE = 'input, textarea, select, button, .chips-scroll, .grid-cats, .teclado, .asa-zona';
+    let activo = false, cerrando = false, decidido = false, cancelado = false, x0 = 0, y0 = 0;
+
+    const inicio = e => {
+      cerrando = false;
+      if (e.touches.length !== 1 || sheet.scrollTop > 2 || e.target.closest?.(EXCLUYE)) { cancelado = true; return; }
+      cancelado = false; decidido = false; activo = true;
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+    };
+    const mover = e => {
+      if (!activo || cancelado || cerrando) return;
+      const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
+      if (!decidido) {
+        if (Math.abs(dy) < 12 && Math.abs(dx) < 12) return;
+        // solo un jalón claro hacia abajo cierra; hacia arriba o lateral es scroll
+        if (dy <= 0 || Math.abs(dx) > Math.abs(dy)) { cancelado = true; return; }
+        decidido = true;
+      }
+      if (e.cancelable) e.preventDefault(); // el dedo mueve la hoja, no el scroll
+      sheet.style.transition = 'none';
+      sheet.style.transform = `translateY(${Math.max(0, dy)}px)`;
+    };
+    const soltar = () => {
+      if (!activo || cerrando) return;
+      activo = false;
+      const dy = sheet.style.transform ? parseFloat(sheet.style.transform.replace(/[^\d.-]/g, '')) : 0;
+      sheet.style.transition = '';
+      sheet.style.transform = '';
+      if (decidido && dy > 80) { cerrando = true; onClose?.(); }
+    };
+    sheet.addEventListener('touchstart', inicio, { passive: true });
+    sheet.addEventListener('touchmove', mover, { passive: false });
+    sheet.addEventListener('touchend', soltar);
+    sheet.addEventListener('touchcancel', soltar);
+    return () => {
+      sheet.removeEventListener('touchstart', inicio);
+      sheet.removeEventListener('touchmove', mover);
+      sheet.removeEventListener('touchend', soltar);
+      sheet.removeEventListener('touchcancel', soltar);
+    };
+  }, [onClose]);
+
   return html`<div class="sheet-fondo" onClick=${e => e.target === e.currentTarget && onClose?.()}>
-    <div class="sheet">
+    <div class="sheet" ref=${sheetRef}>
       <div class="asa-zona" ref=${zonaRef}><div class="asa"></div></div>
       ${titulo && html`<h2>${titulo}</h2>`}
       ${children}

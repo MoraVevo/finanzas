@@ -1120,10 +1120,12 @@ function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, v
     const card = cardRef.current;
     const track = trackRef.current;
     if (!card || !track) return;
-    let activo = false, x0 = 0, y0 = 0, idx0 = 0, w = 1;
+    // candado de dirección: la primera decisión (vertical vs horizontal) es
+    // definitiva — un scroll vertical con deriva horizontal NUNCA cambia slide
+    let activo = false, vertical = null, x0 = 0, y0 = 0, idx0 = 0, w = 1;
     const abajo = e => {
       if (!e.isPrimary) return;
-      activo = true; x0 = e.clientX; y0 = e.clientY;
+      activo = true; vertical = null; x0 = e.clientX; y0 = e.clientY;
       w = card.getBoundingClientRect().width || 1;
       idx0 = orden.indexOf(vistaRef.current);
       try { card.setPointerCapture(e.pointerId); } catch { /* sin captura: el gesto igual funciona */ }
@@ -1131,9 +1133,11 @@ function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, v
     const mover = e => {
       if (!activo || !e.isPrimary) return;
       const dx = e.clientX - x0, dy = e.clientY - y0;
-      if (Math.abs(dx) < 8 || Math.abs(dy) > Math.abs(dx)) return; // scroll vertical gana
-      // sin asomar más allá de los extremos: d negativo asoma la siguiente,
-      // positivo la anterior
+      if (vertical === null) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return; // zona muerta inicial
+        vertical = Math.abs(dy) > Math.abs(dx);             // decide el dominante
+        if (vertical) return;                               // scroll: el slide no se toca
+      } else if (vertical) return;
       const d = Math.min(idx0 * w, Math.max(-(orden.length - 1 - idx0) * w, dx));
       track.style.transition = 'none';
       track.style.transform = `translateX(calc(${-idx0 * 100}% + ${d}px))`;
@@ -1141,11 +1145,12 @@ function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, v
     const soltar = e => {
       if (!activo) return;
       activo = false;
-      const d = e.clientX - x0;
+      if (vertical) return; // gesto vertical: jamás cambia de slide
+      const dx = e.clientX - x0;
       track.style.transition = '';
       const umbral = Math.max(50, w * 0.18);
-      const target = Math.abs(d) > umbral
-        ? Math.min(orden.length - 1, Math.max(0, idx0 + (d < 0 ? 1 : -1)))
+      const target = Math.abs(dx) > umbral
+        ? Math.min(orden.length - 1, Math.max(0, idx0 + (dx < 0 ? 1 : -1)))
         : idx0;
       track.style.transform = `translateX(-${target * 100}%)`;
       if (target !== idx0) setVista(orden[target]);
