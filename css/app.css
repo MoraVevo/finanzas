@@ -348,6 +348,17 @@ input[type="datetime-local"], input[type="date"] {
 .nav-mes .mes { font-size: 16px; font-weight: 800; text-transform: capitalize; }
 .nav-mes button { width: 36px; height: 36px; border-radius: 50%; background: var(--card); box-shadow: var(--shadow); font-size: 16px; }
 
+/* Caja de período (Estadísticas): muestra el rango activo; al tocarla abre el
+   selector con presets y fechas, en vez de mostrar chips todo el tiempo. */
+.caja-fecha {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 11px 14px; border-radius: 12px;
+  background: var(--card); border: 1px solid var(--line);
+  font-size: 15px; font-weight: 700; text-transform: capitalize;
+}
+.caja-fecha:active { transform: scale(.985); }
+.caja-fecha .chev { color: var(--muted); font-size: 12px; }
+
 /* ============ Onboarding ============ */
 .onb { min-height: 100dvh; max-width: 520px; margin: 0 auto; padding: calc(env(safe-area-inset-top,0px) + 28px) 22px 32px; display: flex; flex-direction: column; }
 .onb .logo { font-size: 52px; text-align: center; margin: 24px 0 8px; }

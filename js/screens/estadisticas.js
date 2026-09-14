@@ -105,14 +105,15 @@ function serieGasto(desde, hasta, porDia) {
   return { gran, datos };
 }
 
-/** Chips de presets + rango personalizado (sheet con dos fechas). */
-function FiltroRango({ filtro, onFiltro }) {
+/** Caja de período: muestra el rango activo y al tocarla abre el selector
+ *  (sheet) con los presets como chips y las fechas específicas — así la vista
+ *  no queda cargada de chips. */
+function CajaFechas({ filtro, onFiltro }) {
   const [abierto, setAbierto] = useState(false);
   const [tmp, setTmp] = useState(null);
-  const esCustom = Array.isArray(filtro);
+  const [desde, hasta] = Array.isArray(filtro) ? filtro : rangoPreset(filtro);
   const abrir = () => {
-    const [d, h] = esCustom ? filtro : rangoPreset('mes');
-    setTmp({ desde: diaDe(d), hasta: diaDe(finInclusivo(h)) });
+    setTmp({ desde: diaDe(desde), hasta: diaDe(finInclusivo(hasta)) });
     setAbierto(true);
   };
   const aplicar = () => {
@@ -123,13 +124,16 @@ function FiltroRango({ filtro, onFiltro }) {
     onFiltro([a, b]);
     setAbierto(false);
   };
-  return html`<div class="chips-scroll" style=${{ marginBottom: '12px' }}>
-    ${PRESETS_RANGO.map(([k, t]) => html`<button key=${k} class=${'chip' + (filtro === k ? ' sel' : '')}
-      onClick=${() => onFiltro(k)}>${t}</button>`)}
-    <button class=${'chip' + (esCustom ? ' sel' : '')} onClick=${abrir}>
-      ${esCustom ? `📅 ${etiquetaRango(filtro[0], filtro[1])}` : '📅 Fechas…'}
+  const elegirPreset = k => { onFiltro(k); setAbierto(false); };
+  return html`<div style=${{ marginBottom: '12px' }}>
+    <button class="caja-fecha" onClick=${abrir}>
+      🗓 ${etiquetaRango(desde, hasta)} <span class="chev">▾</span>
     </button>
     ${abierto && html`<${Sheet} titulo="Elegir período" onClose=${() => setAbierto(false)}>
+      <div class="chips-scroll" style=${{ marginBottom: '14px' }}>
+        ${PRESETS_RANGO.map(([k, t]) => html`<button key=${k} class=${'chip' + (filtro === k ? ' sel' : '')}
+          onClick=${() => elegirPreset(k)}>${t}</button>`)}
+      </div>
       <div style=${{ display: 'grid', gap: '10px' }}>
         <div>
           <div class="dato-cuenta" style=${{ marginBottom: '4px' }}>Desde</div>
@@ -247,7 +251,7 @@ function VistaRango({ S, todo }) {
   const serie = serieGasto(desde, hasta, st.porDia);
 
   return html`<div>
-    <${FiltroRango} filtro=${filtro} onFiltro=${setFiltro} />
+    <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
 
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtConMoneda(st.gasto, principal)}</div></div>
@@ -957,39 +961,35 @@ function TarjetaDia({ serie, est, etiqueta, principal }) {
   const trackRef = useRef(null);
   const vistaRef = useRef('dia');
   vistaRef.current = vista;
-  // Swipe que SIGUE AL DEDO: dentro de la gráfica el carrusel va con el dedo
-  // (directo). Desde el encabezado (segmentado Día/Estructura/Fijos) va al
-  // REVÉS: deslizar a la izquierda mueve el carrusel a la derecha —hacia la
-  // vista anterior— y viceversa, igual que la vista que el segmentado elige.
+  // Swipe que SIGUE AL DEDO: el carrusel va con el dedo y al soltar, un
+  // arrastre decidido pasa a la vista contigua. Sin pestañas de encabezado:
+  // se navega deslizando o tocando los puntos inferiores.
   useEffect(() => {
     const card = cardRef.current;
     const track = trackRef.current;
     if (!card || !track) return;
-    let x0 = null, y0 = null, idx0 = 0, w = 1, invertido = false;
+    let x0 = null, y0 = null, idx0 = 0, w = 1;
     const ini = e => {
       x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
       w = card.getBoundingClientRect().width || 1;
       idx0 = orden.indexOf(vistaRef.current);
-      invertido = !!e.target.closest?.('.seg'); // arrastre desde el encabezado
     };
     const mov = e => {
       if (x0 == null) return;
       const dx = e.touches[0].clientX - x0;
       const dy = e.touches[0].clientY - y0;
       if (Math.abs(dx) < 8 || Math.abs(dy) > Math.abs(dx)) return; // scroll vertical gana
-      let d = invertido ? -dx : dx;
       // sin asomar más allá de los extremos: d negativo asoma la siguiente,
       // positivo la anterior
-      d = Math.min(idx0 * w, Math.max(-(orden.length - 1 - idx0) * w, d));
+      const d = Math.min(idx0 * w, Math.max(-(orden.length - 1 - idx0) * w, dx));
       track.style.transition = 'none';
       track.style.transform = `translateX(calc(${-idx0 * 100}% + ${d}px))`;
     };
     const fin = e => {
       if (x0 == null) return;
-      const dx = e.changedTouches[0].clientX - x0;
+      const d = e.changedTouches[0].clientX - x0;
       x0 = null;
       track.style.transition = '';
-      const d = invertido ? -dx : dx;
       const umbral = Math.max(50, w * 0.18);
       const target = Math.abs(d) > umbral
         ? Math.min(orden.length - 1, Math.max(0, idx0 + (d < 0 ? 1 : -1)))
@@ -1030,8 +1030,7 @@ function TarjetaDia({ serie, est, etiqueta, principal }) {
 
   return html`<div class="tarjeta tarjeta-carrusel" ref=${cardRef} style=${{ touchAction: 'pan-y' }}>
     <h3>${TITULOS[vista]}</h3>
-    <${Segmentado} opciones=${VISTAS} valor=${vista} onChange=${setVista} />
-    <div class="carrusel" style=${{ marginTop: '10px' }}>
+    <div class="carrusel">
       <div class="carrusel-track" ref=${trackRef}>
         <div class="carrusel-slide">
           ${serie.datos.some(d => d.monto > 0)
@@ -1079,7 +1078,7 @@ function TarjetaDia({ serie, est, etiqueta, principal }) {
    muerto lateral) y las etiquetas se formatean en la moneda real, no en
    centavos. Eje Y dentro del área para alinear las barras con la tarjeta. */
 function ChartGasto({ datos, principal }) {
-  const W = 320, H = 185, PL = 8, PR = 8, PT = 14, PB = 16;
+  const W = 320, H = 215, PL = 8, PR = 8, PT = 14, PB = 16;
   const altoPlot = H - PT - PB;
   const sim = monedaInfo(principal).simbolo;
   // tope "redondo" para que las etiquetas del eje Y sean legibles (ej. 2.5k)
