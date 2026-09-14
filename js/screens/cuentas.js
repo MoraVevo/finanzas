@@ -5,7 +5,7 @@ import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
 import { saldoCuenta, saldoConvertido, convertir, TIPOS_CUENTA } from '../model.js';
 import { Sheet, SelectorMoneda, FilaTx, Segmentado } from '../ui.js';
-import { IconoCuenta } from '../iconos.js';
+import { IconoCuenta, ICONO_EDITAR, ICONO_CAJA, ICONO_RESTAURAR } from '../iconos.js';
 import { uid, textoAEntero, enteroATexto, fmtConMoneda, isoLocal } from '../util.js';
 
 export default function Cuentas() {
@@ -133,9 +133,9 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
     <//>`}
 
     <div style=${{ display: 'flex', gap: '8px', margin: '10px 0' }}>
-      <button class="btn btn-suave" onClick=${() => { setEditor(cuenta); }}>✏️ Editar</button>
+      <button class="btn btn-suave" onClick=${() => { setEditor(cuenta); }}>${ICONO_EDITAR} Editar</button>
       <button class="btn btn-suave" onClick=${() => reArchivar(cuenta, !cuenta.archivada)}>
-        ${cuenta.archivada ? '♻️ Restaurar' : '📦 Archivar'}
+        ${cuenta.archivada ? html`${ICONO_RESTAURAR} Restaurar` : html`${ICONO_CAJA} Archivar`}
       </button>
     </div>
 

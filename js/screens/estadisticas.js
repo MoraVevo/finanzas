@@ -8,7 +8,7 @@ import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
 import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
-import { IconoCuenta } from '../iconos.js';
+import { IconoCuenta, IconoCategoria } from '../iconos.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
 const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -256,29 +256,45 @@ function VistaRango({ S, todo }) {
   // Indicadores informativos de ventana móvil: siempre los últimos 3 meses
   // (90 días), sin que el usuario pueda cambiar el rango.
   const hoyMS = +deISO(isoDia());
+  const diaHoy = isoDia();
   const desde3 = isoDia(new Date(hoyMS - 89 * 86400000)) + 'T00:00';
   const hasta3 = isoDia(new Date(hoyMS + 86400000)) + 'T00:00';
   const st3 = statsRango(desde3, hasta3, todo, S);
   const ahorro3 = st3.ingreso - st3.gasto;
-  const promDia = st3.gasto / 90;
+  // El promedio divide entre los días REALMENTE usados: si la app empezó hace
+  // una semana, no se reparte el gasto entre 90 días.
+  const primeraTx = todo.length
+    ? todo.reduce((a, t) => (t.fecha.slice(0, 10) < a ? t.fecha.slice(0, 10) : a), diaHoy)
+    : diaHoy;
+  const desde3Dia = desde3.slice(0, 10);
+  const desdeEfectivo = desde3Dia > primeraTx ? primeraTx : desde3Dia;
+  const diasEfectivos = Math.max(1, Math.min(90, Math.round((hoyMS - +deISO(desdeEfectivo)) / 86400000) + 1));
+  const promDia = st3.gasto / diasEfectivos;
   const catTop = st3.porCategoria[0];
+  // Ficha compacta: si el monto completo no cabe en la ficha, se abrevia (1.2M).
+  const fmtFicha = (v, cod = principal) => {
+    const t = fmtConMoneda(v, cod);
+    return t.length <= 10 ? t : `${monedaInfo(cod).simbolo}${fmtCompacto(v, cod)}`;
+  };
 
   return html`<div>
     <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
 
     <div class="stats-grid-3">
-      <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtConMoneda(st.gasto, principal)}</div></div>
-      <div class="stat-box"><div class="etq">Ingreso</div><div class="val m-ingreso">${fmtConMoneda(st.ingreso, principal)}</div></div>
-      <div class="stat-box"><div class="etq">Neto</div><div class="val" style=${{ color: st.neto >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${fmtConMoneda(st.neto, principal, true)}</div></div>
+      <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
+      <div class="stat-box"><div class="etq">Ingreso</div><div class="val m-ingreso">${fmtFicha(st.ingreso)}</div></div>
+      <div class="stat-box"><div class="etq">Neto</div><div class="val" style=${{ color: st.neto >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${st.neto >= 0 ? '+' : '−'}${fmtFicha(Math.abs(st.neto))}</div></div>
     </div>
 
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">${ahorro3 >= 0 ? 'Ahorro' : 'Desahorro'}</div>
-        <div class="val" style=${{ color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : '−'}${fmtConMoneda(Math.abs(ahorro3), principal)}</div></div>
+        <div class="val" style=${{ color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : '−'}${fmtFicha(Math.abs(ahorro3))}</div></div>
       <div class="stat-box"><div class="etq">Gasto / día</div>
-        <div class="val">${fmtConMoneda(Math.round(promDia), principal)}</div></div>
+        <div class="val">${fmtFicha(Math.round(promDia))}</div></div>
       <div class="stat-box"><div class="etq">Mayor gasto</div>
-        <div class="val" style=${{ fontSize: '13px', lineHeight: 1.35 }}>${catTop ? `${catTop.emoji} ${catTop.nombre}` : '—'}</div></div>
+        <div class="val" style=${{ fontSize: '13px', lineHeight: 1.35 }}>
+          ${catTop ? html`<span style=${{ display: 'inline-flex', alignItems: 'center', gap: '3px', justifyContent: 'center' }}>
+            <${IconoCategoria} emoji=${catTop.emoji} nombre=${catTop.nombre} />${catTop.nombre}</span>` : '—'}</div></div>
     </div>
 
     <${TarjetaDia} serie=${serie} est=${est} etiqueta=${etiqueta} principal=${principal} />

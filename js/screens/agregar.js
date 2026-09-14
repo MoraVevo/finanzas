@@ -7,7 +7,7 @@ import fin from '../db.js';
 import { useStore, nav, recargar, toast, getState } from '../store.js';
 import { convertir, categoriasFrecuentes, motivosRecientes, saldoCuenta } from '../model.js';
 import { Teclado, PickerCuentas, GridCategorias, InputEtiquetas, SelectorFecha, Comprobantes, Segmentado } from '../ui.js';
-import { IconoCuenta } from '../iconos.js';
+import { IconoCuenta, ICONO_BASURA } from '../iconos.js';
 import { uid, isoLocal, textoAEntero, fmtConMoneda, monedaInfo, comprimirImagen } from '../util.js';
 
 const ETIQUETA_TIPO = { gasto: 'Gasto', ingreso: 'Ingreso', transferencia: 'Transferencia' };
@@ -193,7 +193,7 @@ export default function Agregar({ txId }) {
     <div class="pa-sup">
       <div style=${{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <button class="btn-icono" onClick=${() => nav(getState().routeAnterior || '#/')}>✕</button>
-        ${datos.editando && html`<button class="btn-icono" style=${{ color: 'var(--gasto)' }} onClick=${eliminar}>🗑️</button>`}
+        ${datos.editando && html`<button class="btn-icono" aria-label="Eliminar transacción" style=${{ color: 'var(--gasto)' }} onClick=${eliminar}>${ICONO_BASURA}</button>`}
       </div>
       <${Segmentado} opciones=${[['gasto', 'Gasto'], ['ingreso', 'Ingreso'], ['transferencia', 'Transferencia']]} valor=${datos.tipo} onChange=${cambiarTipo}
         onArrastre=${frac => setArrastre({ frac })} onFin=${() => setArrastre(null)} />

@@ -97,15 +97,17 @@ export const fmtConMoneda = (entero, codigo, conSigno = false) => {
   return `${m.simbolo}${fmtMonto(entero, m.dec, conSigno)}`;
 };
 
-/** Monto compacto para ejes de gráfica: los enteros viven en unidades mínimas,
+/** Monto compacto para ejes y fichas: los enteros viven en unidades mínimas,
  *  así que primero se dividen según la moneda (20000 centavos → "200", no
- *  "20,000") y luego se abrevian miles: 250, 2.5k, 48k. */
+ *  "20,000") y luego se abrevian: 250, 2.5k, 48k, 1.2M. */
 export function fmtCompacto(entero, codigo) {
   const v = entero / 10 ** monedaInfo(codigo).dec;
   const a = Math.abs(v);
-  const t = a >= 1000
-    ? (a / 1000).toFixed(a >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k'
-    : String(Math.round(a));
+  const t = a >= 1e6
+    ? (a / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'
+    : a >= 1000
+      ? (a / 1000).toFixed(a >= 100000 ? 0 : 1).replace(/\.0$/, '') + 'k'
+      : String(Math.round(a));
   return (v < 0 ? '−' : '') + t;
 }
 
