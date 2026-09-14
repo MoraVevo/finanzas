@@ -278,7 +278,7 @@ export function deltasFuturos(futuros, tasas, principal, hoyD, cuentaId = null) 
  * scope: null (patrimonio) o id de cuenta. Devuelve la lista con saldo
  * acumulado y métricas del horizonte elegido.
  */
-export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fijos = [], pasadoMeses = 6, futuroMeses = 6, cuentaId = null }) {
+export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fijos = [], cuotas = [], pasadoMeses = 6, futuroMeses = 6, cuentaId = null }) {
   const hoyD = isoDia();
   const clave = claveMes(hoyD);
   const desdeD = sumarMesClave(clave, -pasadoMeses) + '-01';
@@ -345,6 +345,28 @@ export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fi
       m++; if (m > 11) { m = 0; y++; }
     }
   }
+  // Cuotas: cada plan paga su mensualidad hasta agotarse. En patrimonio es
+  // neutra (sale del líquido y baja la deuda) y se lista para que se vea venir;
+  // en el alcance de esa tarjeta suma a su saldo (la deuda baja).
+  for (const p of (cuotas || []).filter(p => p.activa !== false && p.cuentaId)) {
+    const info = planCuotas(p);
+    if (info.terminado) continue;
+    const enScope = !cuentaId || p.cuentaId === cuentaId;
+    if (!enScope) continue;
+    for (const o of pagosCuota(p, hoyD, hastaD)) {
+      eventos.push({
+        fecha: o.fecha,
+        delta: cuentaId ? o.monto : 0,
+        f: {
+          id: 'cuota-' + p.id + '-' + o.k, esFijo: true, esCuota: true, cuotaK: o.k, cuotaN: info.n,
+          tipo: cuentaId ? 'ingreso' : 'transferencia',
+          nombre: 'Cuota ' + (p.nombre || 'plan'),
+          monto: o.monto, moneda: p.moneda, fecha: o.fecha,
+          fuenteNombre: cuentas.find(c => c.id === p.cuentaId)?.nombre || null,
+        },
+      });
+    }
+  }
   eventos.sort((a, b) => a.fecha.localeCompare(b.fecha));
   const serie = [{ fecha: hoyD, balance: balanceHoyScope }];
   let acum = balanceHoyScope, totalIn = 0, totalOut = 0;
@@ -394,6 +416,53 @@ export function fechasFijo(regla, desdeD, hastaD) {
   return out;
 }
 
+/* ============ Cuotas: planes de pago finitos (compra financiada, préstamo) ============ */
+
+const fechaCuotaPlan = (plan, k) => {
+  const d0 = new Date(plan.primeraFecha + 'T12:00');
+  const d = new Date(d0.getFullYear(), d0.getMonth() + k - 1, 12);
+  const dia = Math.min(d0.getDate(), diasDelMes(d.getFullYear(), d.getMonth()));
+  return `${d.getFullYear()}-${p2f(d.getMonth() + 1)}-${p2f(dia)}`;
+};
+
+/** Estado de un plan a la fecha dada: cuotas vencidas, pagado, pendiente y
+ *  próxima cuota. La cuota k vence cada mes el mismo día de la primera (con
+ *  clamp a fin de mes); la última absorbe el redondeo y al agotarse, el plan
+ *  termina solo — el descuento nunca es infinito. */
+export function planCuotas(plan, hoyD = isoDia()) {
+  const n = Math.max(1, Math.round(plan.numCuotas));
+  const cuotaBase = Math.floor(plan.montoTotal / n);
+  let vencidas = 0, proxima = null;
+  for (let k = 1; k <= n; k++) {
+    const f = fechaCuotaPlan(plan, k);
+    if (f <= hoyD) vencidas = k;
+    else if (!proxima) proxima = { k, fecha: f };
+  }
+  const montoK = k => (k === n ? plan.montoTotal - cuotaBase * (n - 1) : cuotaBase);
+  const pagado = vencidas === 0 ? 0 : plan.montoTotal - (n - vencidas) * cuotaBase;
+  return {
+    n, cuota: cuotaBase, montoK, vencidas, proxima,
+    ultima: fechaCuotaPlan(plan, n),
+    pagado, pendiente: plan.montoTotal - pagado,
+    terminado: vencidas >= n,
+  };
+}
+
+/** Pagos PENDIENTES de un plan dentro de [desdeD, hastaD]. Lo ya vencido no
+ *  vuelve a generarse. */
+export function pagosCuota(plan, desdeD, hastaD) {
+  const hoy = isoDia();
+  const n = Math.max(1, Math.round(plan.numCuotas));
+  const cuotaBase = Math.floor(plan.montoTotal / n);
+  const out = [];
+  for (let k = 1; k <= n; k++) {
+    const f = fechaCuotaPlan(plan, k);
+    if (f < desdeD || f > hastaD || f <= hoy) continue;
+    out.push({ k, fecha: f, monto: k === n ? plan.montoTotal - cuotaBase * (n - 1) : cuotaBase });
+  }
+  return out;
+}
+
 /**
  * Poder adquisitivo teórico: parte del dinero líquido de hoy (sin contar
  * tarjetas ni deudas — una deuda no impide pagar) y camina el calendario
@@ -403,9 +472,10 @@ export function fechasFijo(regla, desdeD, hastaD) {
  * deuda de esa cuenta el día del cargo (fila '+rojo'). Los pagos de tarjeta
  * cubren el ciclo que cierra en el corte previo a cada fecha de pago — el
  * pago paga el saldo completo al cierre (incluye deuda arrastrada) más los
- * fijos cargados a esa tarjeta dentro del ciclo.
+ * fijos cargados a esa tarjeta dentro del ciclo, pero restando el pendiente
+ * de las cuotas de esa tarjeta (esas se pagan mes a mes con su plan).
  */
-export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], dias = 45 }) {
+export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], cuotas = [], dias = 45 }) {
   const hoyD = isoDia();
   const finD = (() => { const d = new Date(hoyD + 'T12:00'); d.setDate(d.getDate() + dias); return isoDia(d); })();
   let base = 0;
@@ -442,6 +512,20 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], d
       }
     }
   }
+  // Cuotas: cada plan activo paga su mensualidad hasta agotarse (finito por
+  // diseño: la cuota n es la última y el plan desaparece de las proyecciones).
+  for (const p of (cuotas || []).filter(p => p.activa !== false && p.cuentaId)) {
+    const info = planCuotas(p);
+    if (info.terminado) continue;
+    for (const o of pagosCuota(p, hoyD, finD)) {
+      eventos.push({
+        fecha: o.fecha, tipo: 'gasto', esCuota: true, cuotaK: o.k, cuotaN: info.n,
+        fijoId: 'cuota-' + p.id,
+        nombre: 'Cuota ' + (p.nombre || 'plan'),
+        montoP: convertir(o.monto, p.moneda, principal, tasas, o.fecha), moneda: principal,
+      });
+    }
+  }
   // Pagos de tarjeta: cada pago cubre la factura que cierra en el corte previo
   // al pago. Primera ocurrencia: saldo real completo al cierre (el ciclo abierto
   // de hoy siempre cierra ahí). Siguientes: solo fijos cargados a la tarjeta en
@@ -465,8 +549,13 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], d
     pagos.forEach((pago, i) => {
       const ref = cierres[i] || (i === 0 ? hoyD : pagos[0]);
       const refPrev = i === 0 ? null : (cierres[i - 1] || pagos[i - 1]);
+      // El pendiente de cuotas de esta tarjeta se amortiza mes a mes con su
+      // plan — se resta del saldo que el pago de ciclo cubriría para no
+      // contarlo dos veces.
+      const pendienteCuotas = (cuotas || []).filter(p => p.activa !== false && p.cuentaId === c.id)
+        .reduce((s, p) => s + planCuotas(p, ref).pendiente, 0);
       let montoP = i === 0
-        ? Math.max(0, -convertir(saldoEn(c, ref), c.moneda, principal, tasas, ref))
+        ? Math.max(0, -convertir(saldoEn(c, ref), c.moneda, principal, tasas, ref) - pendienteCuotas)
         : 0;
       for (const e of eventos) {
         if (e.tipo !== 'deuda' || e.fuente !== c.id) continue;

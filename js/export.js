@@ -56,13 +56,13 @@ export async function exportarCSV({ tasas, principal, cuentas, categorias }) {
 
 /* ---------- JSON completo (respaldo / importación) ---------- */
 export async function exportarJSON({ incluirImagenes }) {
-  const [cuentas, transacciones, categorias, etiquetas, presupuestos, tasas, futuros, fijos, ajustes, adjuntos] = await Promise.all([
+  const [cuentas, transacciones, categorias, etiquetas, presupuestos, tasas, futuros, fijos, cuotas, ajustes, adjuntos] = await Promise.all([
     fin.cuentas(), db2().transacciones.toArray(), fin.categorias(), fin.etiquetas(),
-    fin.presupuestos(), fin.tasas(), fin.futuros(), fin.fijos(), db2().ajustes.toArray(), db2().adjuntos.toArray()
+    fin.presupuestos(), fin.tasas(), fin.futuros(), fin.fijos(), fin.cuotas(), db2().ajustes.toArray(), db2().adjuntos.toArray()
   ]);
   const data = {
     formato: 'finanzas-backup', version: 1, exportadoEn: new Date().toISOString(),
-    cuentas, transacciones, categorias, etiquetas, presupuestos, tasas, futuros, fijos, ajustes
+    cuentas, transacciones, categorias, etiquetas, presupuestos, tasas, futuros, fijos, cuotas, ajustes
   };
   if (incluirImagenes) {
     data.adjuntos = await Promise.all(adjuntos.map(async a => ({
@@ -82,7 +82,7 @@ export async function importarJSON(texto) {
   if (data.formato !== 'finanzas-backup') throw new Error('No parece un respaldo de esta app.');
   const d = fin._db();
   await d.transaction('rw', d.tables, async () => {
-    for (const tabla of ['cuentas', 'transacciones', 'categorias', 'etiquetas', 'presupuestos', 'tasas', 'futuros', 'fijos', 'adjuntos', 'ajustes']) {
+    for (const tabla of ['cuentas', 'transacciones', 'categorias', 'etiquetas', 'presupuestos', 'tasas', 'futuros', 'fijos', 'cuotas', 'adjuntos', 'ajustes']) {
       await d.table(tabla).clear();
     }
     await d.cuentas.bulkPut(data.cuentas || []);
@@ -93,6 +93,7 @@ export async function importarJSON(texto) {
     await d.tasas.bulkPut(data.tasas || []);
     await d.futuros.bulkPut(data.futuros || []);
     await d.fijos.bulkPut(data.fijos || []);
+    await d.cuotas.bulkPut(data.cuotas || []);
     await d.ajustes.bulkPut(data.ajustes || []);
     if (data.adjuntos) {
       await d.adjuntos.bulkPut(await Promise.all(data.adjuntos.map(async a => ({

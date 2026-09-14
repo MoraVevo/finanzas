@@ -3,7 +3,7 @@
 import { html, useState, useEffect } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
-import { patrimonio, saldoConvertido, saldoCuenta, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo } from '../model.js';
+import { patrimonio, saldoConvertido, saldoCuenta, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo, planCuotas } from '../model.js';
 import { FilaTx, Sheet, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_AJUSTES } from '../iconos.js';
 import { fmtConMoneda, fmtFecha, claveMesActual, rangoMes, fmtMesLargo, uid, textoAEntero, enteroATexto, isoDia } from '../util.js';
@@ -12,7 +12,7 @@ export default function Hoy() {
   const S = useStore();
   const [txs, setTxs] = useState(null);
   const [recientes, setRecientes] = useState([]);
-  const [panelFijos, setPanelFijos] = useState(false);
+  const [programadas, setProgramadas] = useState(null); // null | { tab: 'fijos'|'cuotas', nueva? }
 
   useEffect(() => {
     let vivo = true;
@@ -34,7 +34,7 @@ export default function Hoy() {
   const presupuestoTotal = S.presupuestos.reduce((s, pr) => s + pr.monto, 0);
   const pct = presupuestoTotal ? Math.min(100, stats.gasto / presupuestoTotal * 100) : 0;
   const excedido = presupuestoTotal && stats.gasto > presupuestoTotal;
-  const pa = poderAdquisitivo({ fijos: S.fijos, cuentas: S.cuentas, txs, tasas: S.tasas, principal });
+  const pa = poderAdquisitivo({ fijos: S.fijos, cuotas: S.cuotas, cuentas: S.cuentas, txs, tasas: S.tasas, principal });
   const fijosActivos = S.fijos.filter(f => f.activa !== false);
 
   // agrupar recientes por día
@@ -98,8 +98,11 @@ export default function Hoy() {
 
     <div class="tarjeta">
       <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-        <h3 style=${{ marginBottom: 0 }}>Próximos pagos fijos</h3>
-        <button class="chip" onClick=${() => setPanelFijos(true)}>＋ Fijos</button>
+        <h3 style=${{ marginBottom: 0 }}>Pagos programados</h3>
+        <div class="chips-scroll" style=${{ padding: 0 }}>
+          <button class="chip" onClick=${() => setProgramadas({ tab: 'fijos' })}>＋ Fijos</button>
+          <button class="chip" onClick=${() => setProgramadas({ tab: 'cuotas', nueva: true })}>＋ Cuota</button>
+        </div>
       </div>
       <div class="dato-cuenta" style=${{ marginBottom: '6px' }}>
         Teórico · hoy: <b class="num">${fmtConMoneda(pa.base, principal)}</b> disponibles${fijosActivos.length ? '' : ' — configura tus ingresos y gastos fijos'}
@@ -112,7 +115,9 @@ export default function Hoy() {
             <div class="titulo">${r.nombre}</div>
             <div class="sub">${esDeuda
               ? `${fmtFecha(r.fecha)} · va a tu ${fuenteC ? (TIPOS_CUENTA[fuenteC.tipo].nombre.toLowerCase() + ' ' + fuenteC.nombre) : 'tarjeta'}`
-              : html`${fmtFecha(r.fecha)} · quedaría <span class="num" style=${{ color: r.balanceDespues < 0 ? 'var(--gasto)' : 'inherit', fontWeight: r.balanceDespues < 0 ? 700 : 400 }}>${fmtConMoneda(r.balanceDespues, principal)}</span>`}</div>
+              : r.esCuota
+                ? `${fmtFecha(r.fecha)} · cuota ${r.cuotaK} de ${r.cuotaN}`
+                : html`${fmtFecha(r.fecha)} · quedaría <span class="num" style=${{ color: r.balanceDespues < 0 ? 'var(--gasto)' : 'inherit', fontWeight: r.balanceDespues < 0 ? 700 : 400 }}>${fmtConMoneda(r.balanceDespues, principal)}</span>`}</div>
           </div>
           <div class="monto num ${r.tipo === 'ingreso' ? 'm-ingreso' : 'm-gasto'}">
             ${r.tipo === 'gasto' ? '−' : '+'}${fmtConMoneda(r.montoP, principal)}
@@ -145,9 +150,129 @@ export default function Hoy() {
       ${grupos.length === 0 && html`<div class="vacio">Aún no hay movimientos.<br/>Toca el botón <b>+</b> para registrar el primero.</div>`}
     </div>
 
-    ${panelFijos && html`<${Sheet} titulo="Ingresos y gastos fijos" onClose=${() => setPanelFijos(false)}>
-      <${PanelFijos} S=${S} cerrar=${() => setPanelFijos(false)} />
+    ${programadas && html`<${Sheet} titulo="Pagos programados" onClose=${() => setProgramadas(null)}>
+      <${PanelProgramadas} S=${S} tab=${programadas.tab} nueva=${programadas.nueva} cerrar=${() => setProgramadas(null)} />
     <//>`}
+  </div>`;
+}
+
+/* ---------- Panel: programados (fijos y cuotas) ---------- */
+function PanelProgramadas({ S, tab, nueva, cerrar }) {
+  const [pestana, setPestana] = useState(tab || 'fijos');
+  return html`<div>
+    <${Segmentado} opciones=${[['fijos', 'Fijos'], ['cuotas', 'Cuotas']]} valor=${pestana} onChange=${setPestana} />
+    <div style=${{ marginTop: '12px' }}>
+      ${pestana === 'cuotas' ? html`<${PanelCuotas} S=${S} nueva=${nueva} cerrar=${cerrar} />` : html`<${PanelFijos} S=${S} cerrar=${cerrar} />`}
+    </div>
+  </div>`;
+}
+
+/* ---------- Panel: cuotas (planes de pago finitos) ---------- */
+function PanelCuotas({ S, nueva, cerrar }) {
+  const [edit, setEdit] = useState(nueva ? { cuentaId: null } : null);
+  if (edit) return html`<${EditorCuota} p=${edit} S=${S} cerrar=${() => setEdit(null)} />`;
+  const lista = [...S.cuotas].sort((a, b) => (a.activa === false ? 1 : 0) - (b.activa === false ? 1 : 0));
+  return html`<div>
+    <div class="dato-cuenta" style=${{ marginBottom: '10px' }}>
+      Compras financiadas o préstamos: cada mes se cobra la cuota hasta agotar el
+      plan y desaparece solo. Registra la compra como gasto con la tarjeta para
+      que tu límite la refleje.
+    </div>
+    ${lista.map(p => {
+      const info = planCuotas(p);
+      const cta = S.cuentas.find(c => c.id === p.cuentaId);
+      return html`<div key=${p.id} class="fila" onClick=${() => setEdit(p)}>
+        <div class="cuerpo">
+          <div class="titulo">${p.nombre || 'Cuotas'}${cta ? html` · <span class="sub" style=${{ display: 'inline' }}>${cta.nombre}</span>` : ''}</div>
+          <div class="sub">${info.terminado ? '✓ completado'
+            : info.vencidas === 0 ? `primera cuota: ${fmtFecha(info.proxima.fecha)}`
+            : `próxima: ${fmtFecha(info.proxima.fecha)} · cuota ${Math.min(info.vencidas + 1, info.n)} de ${info.n}`}</div>
+          <div class="barra-fila" style=${{ margin: '7px 0 0' }}>
+            <div class="pista"><div class="lleno" style=${{ width: Math.min(100, Math.round(info.pagado / p.montoTotal * 100)) + '%' }}></div></div>
+          </div>
+          <div class="dato-cuenta num" style=${{ marginTop: '3px' }}>${fmtConMoneda(info.pagado, p.moneda)} de ${fmtConMoneda(p.montoTotal, p.moneda)}</div>
+        </div>
+        <div class="monto num ${info.terminado ? 'm-ingreso' : 'm-gasto'}">
+          ${info.terminado ? '✓' : '−' + fmtConMoneda(info.montoK(info.proxima ? info.proxima.k : info.n), p.moneda)}
+        </div>
+      </div>`;
+    })}
+    ${lista.length === 0 && html`<div class="vacio">Aún no tienes cuotas.</div>`}
+    <button class="btn btn-suave" style=${{ marginTop: '10px' }} onClick=${() => setEdit({ cuentaId: null })}>＋ Nueva cuota</button>
+  </div>`;
+}
+
+/* ---------- Editor de plan de cuotas ---------- */
+function EditorCuota({ p, S, cerrar }) {
+  const [d, setD] = useState({
+    nombre: p.nombre || '', cuentaId: p.cuentaId || null,
+    montoTotal: p.montoTotal ? enteroATexto(p.montoTotal, 2) : '',
+    numCuotas: p.numCuotas ? String(p.numCuotas) : '',
+    moneda: p.moneda || S.ajustes.monedaPrincipal,
+    primeraFecha: p.primeraFecha || isoDia(),
+  });
+  const set = x => setD({ ...d, ...x });
+  const pasivas = S.cuentas.filter(c => !c.archivada && (c.tipo === 'tarjeta' || c.tipo === 'deuda'));
+  const n = parseInt(d.numCuotas, 10);
+  const montoTotal = textoAEntero(d.montoTotal || '0', 2);
+  const preview = montoTotal && n >= 1
+    ? `${fmtConMoneda(Math.floor(montoTotal / n), d.moneda)}${montoTotal % n ? ` (última: ${fmtConMoneda(montoTotal - Math.floor(montoTotal / n) * (n - 1), d.moneda)})` : ''}`
+    : null;
+
+  const guardar = async () => {
+    if (!montoTotal) { toast('Escribe el monto total financiado'); return; }
+    if (!(n >= 1 && n <= 120)) { toast('Número de cuotas inválido (1-120)'); return; }
+    if (!d.cuentaId) { toast('Elige la tarjeta o crédito donde se paga'); return; }
+    await fin.guardarCuota({
+      id: p.id || uid(), nombre: d.nombre.trim() || null, cuentaId: d.cuentaId,
+      montoTotal, numCuotas: n, moneda: d.moneda,
+      primeraFecha: d.primeraFecha || isoDia(),
+      activa: p.activa !== false, creadoEn: p.creadoEn || new Date().toISOString()
+    });
+    await recargar();
+    toast('✓ Cuota guardada');
+    cerrar();
+  };
+
+  const borrar = async () => {
+    if (!p.id || !confirm('¿Eliminar este plan de cuotas? Los pagos ya pasados quedan en tus movimientos.')) return;
+    await fin.borrarCuota(p.id);
+    await recargar();
+    toast('Eliminado');
+    cerrar();
+  };
+
+  return html`<div>
+    <div style=${{ display: 'grid', gap: '8px' }}>
+      <input placeholder="Nombre (Laptop, Préstamo personal…)" value=${d.nombre} onInput=${e => set({ nombre: e.target.value })} />
+      <div style=${{ display: 'flex', gap: '8px' }}>
+        <div style=${{ flex: 1 }}>
+          <div class="dato-cuenta">Monto total financiado</div>
+          <input inputMode="decimal" placeholder="0.00" value=${d.montoTotal} style=${{ textAlign: 'right' }}
+            onInput=${e => set({ montoTotal: e.target.value })} />
+        <//>
+        <div style=${{ flex: 1 }}>
+          <div class="dato-cuenta">Cuotas (meses)</div>
+          <input inputMode="numeric" placeholder="Ej. 10" value=${d.numCuotas} style=${{ textAlign: 'right' }}
+            onInput=${e => set({ numCuotas: e.target.value.replace(/[^0-9]/g, '').slice(0, 3) })} />
+        <//>
+      <//>
+      <div>
+        <div class="dato-cuenta">Se paga con</div>
+        <div class="chips-scroll" style=${{ marginTop: '6px' }}>
+          ${pasivas.map(c => html`<button key=${c.id} class=${'chip' + (d.cuentaId === c.id ? ' sel' : '')}
+            onClick=${() => set({ cuentaId: c.id })}><${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}</button>`)}
+        </div>
+        ${pasivas.length === 0 && html`<div class="dato-cuenta">Crea una tarjeta o deuda en la pestaña Cuentas.</div>`}
+      <//>
+      <div>
+        <div class="dato-cuenta">Primera cuota</div>
+        <input type="date" value=${d.primeraFecha} onChange=${e => e.target.value && set({ primeraFecha: e.target.value })} />
+      <//>
+      ${preview && html`<div class="dato-cuenta">Cuota mensual: <b class="num">${preview}</b></div>`}
+    </div>
+    <button class="btn btn-primario" style=${{ marginTop: '12px' }} onClick=${guardar}>Guardar cuota</button>
+    ${p.id && html`<button class="btn btn-rojo" style=${{ marginTop: '8px' }} onClick=${borrar}>Eliminar plan</button>`}
   </div>`;
 }
 

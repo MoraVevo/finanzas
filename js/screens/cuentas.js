@@ -3,10 +3,10 @@
 import { html, useState, useEffect } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
-import { saldoCuenta, saldoConvertido, convertir, TIPOS_CUENTA } from '../model.js';
+import { saldoCuenta, saldoConvertido, convertir, planCuotas, TIPOS_CUENTA } from '../model.js';
 import { Sheet, SelectorMoneda, FilaTx, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_EDITAR, ICONO_CAJA, ICONO_RESTAURAR } from '../iconos.js';
-import { uid, textoAEntero, enteroATexto, fmtConMoneda, isoLocal } from '../util.js';
+import { uid, textoAEntero, enteroATexto, fmtConMoneda, fmtFecha, isoLocal } from '../util.js';
 
 export default function Cuentas() {
   const S = useStore();
@@ -131,6 +131,25 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
         <div class="cuerpo"><div class="sub">${etq}</div><div class="titulo copiable" onClick=${() => copiar(val)}>${val} 📋</div></div>
       </div>`)}
     <//>`}
+
+    ${(S.cuotas || []).some(p => p.cuentaId === cuenta.id && p.activa !== false) && html`<div class="tarjeta" style=${{ paddingTop: '4px' }}>
+      <h3>Cuotas</h3>
+      ${(S.cuotas || []).filter(p => p.cuentaId === cuenta.id && p.activa !== false).map(p => {
+        const info = planCuotas(p);
+        return html`<div key=${p.id} class="fila">
+          <div class="cuerpo">
+            <div class="titulo">${p.nombre || 'Cuotas'}</div>
+            <div class="sub">${info.terminado ? '✓ completado' : `cuota ${Math.min(info.vencidas + 1, info.n)} de ${info.n} · próxima ${fmtFecha(info.proxima.fecha)}`}</div>
+            <div class="barra-fila" style=${{ margin: '6px 0 0' }}>
+              <div class="pista"><div class="lleno" style=${{ width: Math.min(100, Math.round(info.pagado / p.montoTotal * 100)) + '%' }}></div></div>
+            </div>
+            <div class="dato-cuenta num" style=${{ marginTop: '3px' }}>${fmtConMoneda(info.pagado, p.moneda)} de ${fmtConMoneda(p.montoTotal, p.moneda)}</div>
+          </div>
+          <div class="monto num ${info.terminado ? 'm-ingreso' : 'm-gasto'}">${info.terminado ? '✓' : '−' + fmtConMoneda(info.montoK(info.proxima ? info.proxima.k : info.n), p.moneda)}</div>
+        </div>`;
+      })}
+      <div class="dato-cuenta" style=${{ margin: '4px 4px 8px' }}>Cada cuota pagada libera ese monto de tu crédito disponible.</div>
+    </div>`}
 
     <div style=${{ display: 'flex', gap: '8px', margin: '10px 0' }}>
       <button class="btn btn-suave" onClick=${() => { setEditor(cuenta); }}>${ICONO_EDITAR} Editar</button>

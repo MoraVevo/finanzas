@@ -29,6 +29,9 @@ db.version(3).stores({ futuros: 'id, fecha, tipo' });
 // v4: ingresos y gastos fijos (reglas periódicas indefinidas).
 db.version(4).stores({ fijos: 'id, tipo, activa' });
 
+// v5: planes de pago a cuotas (compras financiadas, préstamos) — finitos.
+db.version(5).stores({ cuotas: 'id, cuentaId, activa' });
+
 const fin = {};
 
 /* ---------- ajustes (key/value) ---------- */
@@ -132,6 +135,11 @@ fin.borrarFuturo = id => db.futuros.delete(id);
 fin.fijos = () => db.fijos.toArray();
 fin.guardarFijo = f => db.fijos.put(f);
 fin.borrarFijo = id => db.fijos.delete(id);
+
+/* ---------- cuotas (planes de pago finitos: laptop, préstamo…) ---------- */
+fin.cuotas = () => db.cuotas.toArray();
+fin.guardarCuota = c => db.cuotas.put(c);
+fin.borrarCuota = id => db.cuotas.delete(id);
 
 fin._db = () => db;
 

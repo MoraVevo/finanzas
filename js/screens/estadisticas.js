@@ -369,8 +369,8 @@ function VistaFlujo({ S, todo }) {
 
   const fl = useMemo(() => flujoEfectivo({
     cuentas: S.cuentas, txs: todo, tasas: S.tasas, principal,
-    futuros: S.futuros, fijos: S.fijos, pasadoMeses: 6, futuroMeses: horizonte, cuentaId: cuentaScope
-  }), [S.cuentas, todo, S.tasas, S.futuros, S.fijos, horizonte, cuentaScope]);
+    futuros: S.futuros, fijos: S.fijos, cuotas: S.cuotas, pasadoMeses: 6, futuroMeses: horizonte, cuentaId: cuentaScope
+  }), [S.cuentas, todo, S.tasas, S.futuros, S.fijos, S.cuotas, horizonte, cuentaScope]);
 
   const final = fl.serie.at(-1);
   const nombreScope = cuentaScope ? (S.cuentas.find(c => c.id === cuentaScope)?.nombre || '') : null;
@@ -454,7 +454,9 @@ function VistaFlujo({ S, todo }) {
               : (f.nombre || (f.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'))}</div>
             <div class="sub">${esCargoFijo
               ? `${fmtFechaCorta(f.fecha)} · va a tu tarjeta ${f.fuenteNombre}`
-              : `${fmtFechaCorta(f.fecha)} · después: ${fmtConMoneda(f.balanceDespues, principal)}`}</div>
+              : f.esCuota
+                ? `${fmtFechaCorta(f.fecha)} · cuota ${f.cuotaK} de ${f.cuotaN} a tu tarjeta ${f.fuenteNombre}`
+                : `${fmtFechaCorta(f.fecha)} · después: ${fmtConMoneda(f.balanceDespues, principal)}`}</div>
           </div>
           <div class=${'monto num ' + (positivo ? 'm-ingreso' : f.tipo === 'transferencia' ? 'm-transf' : 'm-gasto')}>
             ${positivo ? '+' : f.tipo === 'transferencia' ? '→ ' : '−'}${fmtConMoneda(f.monto, f.moneda)}
