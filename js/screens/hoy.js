@@ -103,15 +103,21 @@ export default function Hoy() {
       <div class="dato-cuenta" style=${{ marginBottom: '6px' }}>
         Teórico · hoy: <b class="num">${fmtConMoneda(pa.base, principal)}</b> disponibles${fijosActivos.length ? '' : ' — configura tus ingresos y gastos fijos'}
       </div>
-      ${pa.rows.map(r => html`<div key=${r.fecha + r.fijoId + r.nombre} class=${'fila fila-pago ' + (r.ok ? 'fila-pago-ok' : 'fila-pago-falta')}>
-        <div class="cuerpo">
-          <div class="titulo">${r.nombre}</div>
-          <div class="sub">${fmtFecha(r.fecha)} · quedaría <span class="num" style=${{ color: r.balanceDespues < 0 ? 'var(--gasto)' : 'inherit', fontWeight: r.balanceDespues < 0 ? 700 : 400 }}>${fmtConMoneda(r.balanceDespues, principal)}</span></div>
-        </div>
-        <div class="monto num ${r.tipo === 'ingreso' ? 'm-ingreso' : 'm-gasto'}">
-          ${r.tipo === 'ingreso' ? '+' : '−'}${fmtConMoneda(r.montoP, principal)}
-        </div>
-      </div>`)}
+      ${pa.rows.map(r => {
+        const esDeuda = r.tipo === 'deuda';
+        const fuenteC = esDeuda ? S.cuentas.find(c => c.id === r.fuente) : null;
+        return html`<div key=${r.fecha + r.fijoId + r.nombre} class=${'fila fila-pago ' + (esDeuda ? '' : r.ok ? 'fila-pago-ok' : 'fila-pago-falta')}>
+          <div class="cuerpo">
+            <div class="titulo">${r.nombre}</div>
+            <div class="sub">${esDeuda
+              ? `${fmtFecha(r.fecha)} · va a tu ${fuenteC ? (TIPOS_CUENTA[fuenteC.tipo].nombre.toLowerCase() + ' ' + fuenteC.nombre) : 'tarjeta'}`
+              : html`${fmtFecha(r.fecha)} · quedaría <span class="num" style=${{ color: r.balanceDespues < 0 ? 'var(--gasto)' : 'inherit', fontWeight: r.balanceDespues < 0 ? 700 : 400 }}>${fmtConMoneda(r.balanceDespues, principal)}</span>`}</div>
+          </div>
+          <div class="monto num ${r.tipo === 'ingreso' ? 'm-ingreso' : 'm-gasto'}">
+            ${r.tipo === 'gasto' ? '−' : '+'}${fmtConMoneda(r.montoP, principal)}
+          </div>
+        </div>`;
+      })}
       ${pa.rows.length === 0 && html`<div class="vacio">
         Ej.: <b>Salario</b> cada mes el día 10, <b>Celular</b> el día 11.<br/>
         Así la app te dice si te alcanzará para cada pago.
@@ -154,15 +160,19 @@ function PanelFijos({ S, cerrar }) {
   return html`<div>
     <div class="dato-cuenta" style=${{ marginBottom: '10px' }}>
       Reglas que se repiten sin fecha de fin: salario, alquiler, celular… Alimentan el
-      poder adquisitivo teórico de Inicio.
+      poder adquisitivo teórico de Inicio. Si un gasto se paga con tarjeta, elige la
+      fuente y se suma a esa deuda en vez de descontar tu disponible.
     </div>
-    ${lista.map(f => html`<div key=${f.id} class="fila" onClick=${() => setEdit(f)}>
-      <div class="cuerpo">
-        <div class="titulo">${f.nombre || (f.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo')}</div>
-        <div class="sub">${FRECV[f.frecuencia] || f.frecuencia}${f.frecuencia !== 'quincenal' ? ' · día ' + f.dia : ''} · ${f.moneda}${f.activa === false ? ' · inactivo' : ''}</div>
-      </div>
-      <div class="monto num ${f.tipo === 'ingreso' ? 'm-ingreso' : 'm-gasto'}">${f.tipo === 'ingreso' ? '+' : '−'}${fmtConMoneda(f.monto, f.moneda)}</div>
-    </div>`)}
+    ${lista.map(f => {
+      const fu = f.fuente ? S.cuentas.find(c => c.id === f.fuente) : null;
+      return html`<div key=${f.id} class="fila" onClick=${() => setEdit(f)}>
+        <div class="cuerpo">
+          <div class="titulo">${f.nombre || (f.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo')}</div>
+          <div class="sub">${FRECV[f.frecuencia] || f.frecuencia}${f.frecuencia !== 'quincenal' ? ' · día ' + f.dia : ''} · ${f.moneda}${fu ? ` · ${TIPOS_CUENTA[fu.tipo].emoji} ${fu.nombre}` : ''}${f.activa === false ? ' · inactivo' : ''}</div>
+        </div>
+        <div class="monto num ${f.tipo === 'ingreso' ? 'm-ingreso' : 'm-gasto'}">${f.tipo === 'ingreso' ? '+' : '−'}${fmtConMoneda(f.monto, f.moneda)}</div>
+      </div>`;
+    })}
     ${lista.length === 0 && html`<div class="vacio">Aún no tienes fijos.</div>`}
     <button class="btn btn-suave" style=${{ marginTop: '10px' }} onClick=${() => setEdit({ tipo: 'gasto', moneda: S.ajustes.monedaPrincipal, frecuencia: 'mensual', dia: 15 })}>＋ Nuevo fijo</button>
   </div>`;
@@ -174,10 +184,13 @@ function EditorFijo({ f, S, cerrar }) {
   const [d, setD] = useState({
     nombre: f.nombre || '', tipo: f.tipo || 'gasto',
     monto: f.monto ? enteroATexto(f.monto, 2) : '', moneda: f.moneda || S.ajustes.monedaPrincipal,
-    frecuencia: f.frecuencia || 'mensual', dia: f.dia || 15, activa: f.activa !== false
+    frecuencia: f.frecuencia || 'mensual', dia: f.dia || 15, activa: f.activa !== false,
+    fuente: f.fuente || null
   });
   const set = p => setD({ ...d, ...p });
   const DIAS_SEM = [['0', 'D'], ['1', 'L'], ['2', 'M'], ['3', 'X'], ['4', 'J'], ['5', 'V'], ['6', 'S']];
+  const fuenteObj = S.cuentas.find(c => c.id === d.fuente);
+  const fuentePasiva = fuenteObj && (fuenteObj.tipo === 'tarjeta' || fuenteObj.tipo === 'deuda');
 
   const guardar = async () => {
     const monto = textoAEntero(d.monto || '0', 2);
@@ -187,7 +200,7 @@ function EditorFijo({ f, S, cerrar }) {
     else { if (!(dia >= 1 && dia <= 31)) { toast('Día inválido (1-31)'); return; } }
     await fin.guardarFijo({
       id: f.id || uid(), nombre: d.nombre.trim() || null, tipo: d.tipo, monto, moneda: d.moneda,
-      frecuencia: d.frecuencia, dia, activa: d.activa,
+      frecuencia: d.frecuencia, dia, activa: d.activa, fuente: d.fuente || null,
       creadoEn: f.creadoEn || new Date().toISOString()
     });
     await recargar();
@@ -215,6 +228,19 @@ function EditorFijo({ f, S, cerrar }) {
             onClick=${() => set({ moneda: m })}>${m}</button>`)}
         <//>
       <//>
+      ${d.tipo === 'gasto' && html`<div>
+        <div class="dato-cuenta">¿Con qué se paga? (opcional)</div>
+        <div class="chips-scroll" style=${{ marginTop: '6px' }}>
+          <button class=${'chip' + (!d.fuente ? ' sel' : '')} onClick=${() => set({ fuente: null })}>Líquido</button>
+          ${S.cuentas.filter(c => !c.archivada).map(c => html`<button key=${c.id}
+            class=${'chip' + (d.fuente === c.id ? ' sel' : '')}
+            onClick=${() => set({ fuente: c.id })}>${TIPOS_CUENTA[c.tipo].emoji} ${c.nombre}</button>`)}
+        <//>
+        ${fuentePasiva && html`<div class="dato-cuenta" style=${{ marginTop: '4px' }}>
+          No descuenta tu disponible: suma a la deuda de ${fuenteObj.nombre} y se paga
+          con su día de pago (según su fecha de corte).
+        <//>`}
+      <//>`}
       <div>
         <div class="dato-cuenta">Se repite</div>
         <${Segmentado} opciones=${[['mensual', 'Cada mes'], ['quincenal', 'Quincenal'], ['semanal', 'Semanal']]} valor=${d.frecuencia} onChange=${v => set({ frecuencia: v })} />

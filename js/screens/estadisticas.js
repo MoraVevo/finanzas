@@ -125,7 +125,7 @@ function CajaFechas({ filtro, onFiltro }) {
     setAbierto(false);
   };
   const elegirPreset = k => { onFiltro(k); setAbierto(false); };
-  return html`<div style=${{ marginBottom: '12px' }}>
+  return html`<div style=${{ marginTop: '10px', marginBottom: '12px' }}>
     <button class="caja-fecha" onClick=${abrir}>
       🗓 ${etiquetaRango(desde, hasta)} <span class="chev">▾</span>
     </button>
@@ -220,14 +220,17 @@ export default function Estadisticas() {
   if (!todo) return html`<div class="vista"><div class="vacio" style=${{ paddingTop: '60px' }}>Cargando…</div></div>`;
 
   const f = arrastre ? arrastre.frac : 0;
+  // Sin transform en reposo: un ancestro transformado (aunque sea identidad)
+  // vuelve relativo a él todo position:fixed interno y rompe los sheets
+  // (overlay recortado y anclado al fondo de la página).
   return html`<div class="vista" ref=${raizRef}>
     <div class="cabecera"><h1>Estadísticas</h1></div>
     <${Segmentado} opciones=${[['resumen', 'Resumen'], ['flujo', 'Flujo y futuro']]} valor=${vista} onChange=${setVista}
       onArrastre=${frac => setArrastre({ frac })} onFin=${() => setArrastre(null)} />
-    <div class=${arrastre ? '' : 'trans-vista'} style=${{
+    <div class=${arrastre ? '' : 'trans-vista'} style=${arrastre ? {
       transform: `translateX(${-f * 18}%)`,
       opacity: 1 - Math.abs(f) * 0.4
-    }}>
+    } : null}>
       ${vista === 'resumen'
         ? html`<${VistaRango} S=${S} todo=${todo} />`
         : html`<${VistaFlujo} S=${S} todo=${todo} />`}
@@ -1122,14 +1125,14 @@ function ChartGasto({ datos, principal }) {
     ${datos.map((d, i) => {
       const h = alto(d.monto);
       return html`<rect key=${i} x=${X(i) - bw / 2} y=${H - PB - h} width=${bw} height=${h} rx="2.5"
-        fill=${d.monto ? 'var(--accent)' : 'var(--chip)'} opacity=${d.monto ? 1 : .55}>
+        fill=${d.monto ? 'var(--gasto)' : 'var(--chip)'} opacity=${d.monto ? 1 : .55}>
         <title>${d.largo}: ${fmtConMoneda(d.monto, principal)}</title>
       <//>`;
     })}
     ${ticksY.map((v, i) => html`<text key=${'y' + i} x=${PL + 2} y=${H - PB - alto(v) - 2.5}
       style=${{ fontSize: '7px' }} fill="var(--muted)">${fmtCompacto(v, principal)}</text>`)}
     ${[...mostrar].map(i => html`<text key=${'v' + i} x=${Math.max(14, Math.min(W - 14, X(i)))} y=${H - PB - alto(datos[i].monto) - 3}
-      textAnchor="middle" style=${{ fontSize: '6.5px', fontWeight: 700 }} fill="var(--accent)">${etqVal(datos[i].monto)}</text>`)}
+      textAnchor="middle" style=${{ fontSize: '6.5px', fontWeight: 700 }} fill="var(--gasto)">${etqVal(datos[i].monto)}</text>`)}
     ${marcasX.map(i => { const d = datos[i]; return html`<text key=${'x' + i}
       x=${Math.max(12, Math.min(W - 12, X(i)))} y=${H - 5} textAnchor="middle"
       style=${{ fontSize: '7px', fontWeight: d.esHoy ? 800 : 400 }} fill=${d.esHoy ? 'var(--accent)' : 'var(--muted)'}>${d.etq}</text>`; })}

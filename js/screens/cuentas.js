@@ -257,6 +257,7 @@ function EditorCuenta({ c, S, cerrar }) {
               onInput=${e => set({ pagoDia: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) })} />
           <//>
         <//>
+        <div class="dato-cuenta">Con día de pago y deuda pendiente, el pago aparece solo en Inicio · Próximos pagos fijos, ese mismo día por lo que debes.</div>
         <div>
           <div class="dato-cuenta">Tipo de crédito</div>
           <${Segmentado} opciones=${[['individual', 'Individual'], ['compartida', 'Bolsa compartida']]} valor=${f.bolsa} onChange=${b => set({ bolsa: b })} />

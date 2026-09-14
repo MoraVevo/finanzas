@@ -345,6 +345,12 @@ export function fechasFijo(regla, desdeD, hastaD) {
  * Poder adquisitivo teórico: parte del dinero líquido de hoy (sin contar
  * tarjetas ni deudas — una deuda no impide pagar) y camina el calendario
  * aplicando cada fijo en orden. Cada gasto queda marcado: alcanza o faltante.
+ *
+ * Fijos con fuente pasiva (tarjeta/deuda): no tocan el líquido; suman a la
+ * deuda de esa cuenta el día del cargo (fila '+rojo'). Los pagos de tarjeta
+ * cubren el ciclo que cierra en el corte previo a cada fecha de pago — el
+ * pago paga el saldo completo al cierre (incluye deuda arrastrada) más los
+ * fijos cargados a esa tarjeta dentro del ciclo.
  */
 export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], dias = 45 }) {
   const hoyD = isoDia();
@@ -353,23 +359,84 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], d
   for (const c of cuentas.filter(c => !c.archivada && c.tipo !== 'tarjeta' && c.tipo !== 'deuda')) {
     base += convertir(saldoCuenta(c, txs, tasas), c.moneda, principal, tasas, hoyD);
   }
+  const ordenadas = [...txs].sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const saldoEn = (cuenta, fechaISO) => {
+    let s = cuenta.saldoInicial || 0;
+    for (const tx of ordenadas) {
+      if (tx.fecha.slice(0, 10) > fechaISO) break;
+      s += efectoTx(tx, cuenta.id, tasas, cuenta.moneda);
+    }
+    return s;
+  };
+  const cuentaDe = id => cuentas.find(c => c.id === id);
+  const fuentePasiva = id => { const c = cuentaDe(id); return !!c && (c.tipo === 'tarjeta' || c.tipo === 'deuda'); };
+
   const eventos = [];
   for (const r of fijos.filter(r => r.activa !== false)) {
     const montoP = convertir(r.monto, r.moneda, principal, tasas, hoyD);
-    for (const fecha of fechasFijo(r, hoyD, finD)) {
-      eventos.push({
-        fecha, tipo: r.tipo, fijoId: r.id,
-        nombre: r.nombre || (r.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo'),
-        montoP, moneda: principal
-      });
+    if (r.tipo === 'gasto' && r.fuente && fuentePasiva(r.fuente)) {
+      for (const fecha of fechasFijo(r, hoyD, finD)) {
+        eventos.push({ fecha, tipo: 'deuda', fijoId: r.id, fuente: r.fuente,
+          nombre: r.nombre || 'Gasto fijo', montoP, moneda: principal });
+      }
+    } else {
+      for (const fecha of fechasFijo(r, hoyD, finD)) {
+        eventos.push({
+          fecha, tipo: r.tipo, fijoId: r.id,
+          nombre: r.nombre || (r.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo'),
+          montoP, moneda: principal
+        });
+      }
     }
+  }
+  // Pagos de tarjeta: cada pago cubre la factura que cierra en el corte previo
+  // al pago. Primera ocurrencia: saldo real completo al cierre (el ciclo abierto
+  // de hoy siempre cierra ahí). Siguientes: solo fijos cargados a la tarjeta en
+  // su ciclo — los gastos reales futuros no se proyectan.
+  for (const c of cuentas.filter(c => !c.archivada && c.tipo === 'tarjeta' && c.pagoDia)) {
+    const pagos = [];
+    let y = +hoyD.slice(0, 4), m = +hoyD.slice(5, 7) - 1;
+    for (let i = 0; i < 3; i++) {
+      const pago = `${y}-${p2g(m + 1)}-${p2g(Math.min(c.pagoDia, diasDelMes(y, m)))}`;
+      if (pago > finD) break;
+      if (pago >= hoyD) pagos.push(pago);
+      m++; if (m > 11) { m = 0; y++; }
+    }
+    const cierres = pagos.map(p => {
+      if (!c.corte) return null;
+      const dP = new Date(p + 'T12:00');
+      const pc = c.pagoDia > c.corte ? 0 : 1; // el pago corre en el mes del corte o al siguiente
+      const dm = new Date(dP.getFullYear(), dP.getMonth() - pc, 12);
+      return isoDia(new Date(dm.getFullYear(), dm.getMonth(), Math.min(c.corte, diasDelMes(dm.getFullYear(), dm.getMonth())), 12));
+    });
+    pagos.forEach((pago, i) => {
+      const ref = cierres[i] || (i === 0 ? hoyD : pagos[0]);
+      const refPrev = i === 0 ? null : (cierres[i - 1] || pagos[i - 1]);
+      let montoP = i === 0
+        ? Math.max(0, -convertir(saldoEn(c, ref), c.moneda, principal, tasas, ref))
+        : 0;
+      for (const e of eventos) {
+        if (e.tipo !== 'deuda' || e.fuente !== c.id) continue;
+        if (ref && e.fecha > ref) continue;
+        if (refPrev && e.fecha <= refPrev) continue;
+        montoP += e.montoP;
+      }
+      if (montoP <= 0) return;
+      eventos.push({ fecha: pago, tipo: 'gasto', fijoId: 'pago-' + c.id, fuente: c.id,
+        nombre: 'Pago de ' + (c.nombre || 'tarjeta'), montoP, moneda: principal });
+    });
   }
   // mismo día: los ingresos se aplican antes que los gastos
   eventos.sort((a, b) => a.fecha.localeCompare(b.fecha) || (a.tipo === 'ingreso' ? -1 : 1));
   let saldo = base;
   const rows = eventos.map(e => {
-    saldo += e.tipo === 'ingreso' ? e.montoP : -e.montoP;
-    return { ...e, balanceDespues: saldo, ok: saldo >= 0, faltante: saldo < 0 ? -saldo : 0 };
+    let ok = true, faltante = 0;
+    if (e.tipo === 'ingreso') saldo += e.montoP;
+    else if (e.tipo === 'gasto') {
+      saldo -= e.montoP;
+      ok = saldo >= 0; faltante = saldo < 0 ? -saldo : 0;
+    } // deuda: solo informa, no toca el líquido
+    return { ...e, balanceDespues: saldo, ok, faltante };
   });
   return { base, rows, hastaD: finD };
 }
