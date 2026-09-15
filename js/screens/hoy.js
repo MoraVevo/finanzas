@@ -3,7 +3,7 @@
 import { html, useState, useEffect } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
-import { patrimonio, saldoConvertido, saldoCuenta, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo, planCuotas, cuentaEnPatrimonio } from '../model.js';
+import { saldoConvertido, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo, planCuotas, cuentaEnPatrimonio, fechasFijo } from '../model.js';
 import { FilaTx, Sheet, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_AJUSTES } from '../iconos.js';
 import { fmtConMoneda, fmtFecha, claveMesActual, rangoMes, fmtMesLargo, uid, textoAEntero, enteroATexto, isoDia } from '../util.js';
@@ -27,7 +27,6 @@ export default function Hoy() {
   if (!txs) return html`<div class="vista"><div class="vacio" style=${{ paddingTop: '60px' }}>Cargando…</div></div>`;
 
   const principal = S.ajustes.monedaPrincipal;
-  const p = patrimonio(S.cuentas, txs, S.tasas, principal);
   const clave = claveMesActual();
   const [desde, hasta] = rangoMes(clave);
   // historial completo: el neto con terceros necesita su saldo previo al mes
@@ -37,6 +36,25 @@ export default function Hoy() {
   const excedido = presupuestoTotal && stats.gasto > presupuestoTotal;
   const pa = poderAdquisitivo({ fijos: S.fijos, cuotas: S.cuotas, cuentas: S.cuentas, txs, tasas: S.tasas, principal });
   const fijosActivos = S.fijos.filter(f => f.activa !== false);
+
+  /* ---- Tarjeta principal: dinero real y si alcanza hasta el próximo ingreso ---- */
+  const activas = S.cuentas.filter(c => !c.archivada);
+  const debito = activas.filter(c => cuentaEnPatrimonio(c) && c.tipo !== 'tarjeta' && c.tipo !== 'deuda');
+  const tarjetas = activas.filter(c => c.tipo === 'tarjeta');
+  const prestamos = activas.filter(c => c.tipo === 'deuda');
+  const suma = lista => lista.reduce((s, c) => s + saldoConvertido(c, txs, S.tasas, principal), 0);
+  const liquido = suma(debito);
+  const debeTarjetas = -suma(tarjetas);
+  const debePrestamos = -suma(prestamos);
+  // horizonte: hasta el próximo ingreso fijo (si hay salario registrado) o 15 días
+  const hoyD = isoDia();
+  const en60 = isoDia(new Date(Date.parse(hoyD + 'T12:00') + 60 * 86400000));
+  const proximoPago = fijosActivos.filter(f => f.tipo === 'ingreso')
+    .map(r => fechasFijo(r, hoyD, en60)[0]).filter(Boolean).sort()[0] || null;
+  const hastaD = proximoPago || isoDia(new Date(Date.parse(hoyD + 'T12:00') + 15 * 86400000));
+  const porPagar = pa.rows.filter(r => r.tipo === 'gasto' && r.fecha <= hastaD)
+    .reduce((s, r) => s + r.montoP, 0);
+  const trasPagos = liquido - porPagar;
 
   // agrupar recientes por día
   const grupos = [];
@@ -56,20 +74,32 @@ export default function Hoy() {
     </div>
 
     <div class="tarjeta" style=${{ textAlign: 'center', padding: '20px 16px' }}>
-      <div style=${{ fontSize: '12.5px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Patrimonio</div>
-      <div class="num" style=${{ fontSize: '34px', fontWeight: 800, margin: '4px 0 2px' }}>${fmtConMoneda(p.total, principal)}</div>
-      <div style=${{ fontSize: '13px', color: 'var(--muted)' }}>
-        Disponible <b class="num" style=${{ color: 'var(--ingreso)' }}>${fmtConMoneda(p.disponible, principal)}</b>
-        ${p.deudas > 0 && html` · Deudas <b class="num" style=${{ color: 'var(--gasto)' }}>−${fmtConMoneda(p.deudas, principal)}</b>`}
+      <div style=${{ fontSize: '12.5px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Dinero disponible</div>
+      <div class="num" style=${{ fontSize: '34px', fontWeight: 800, margin: '4px 0 2px' }}>${fmtConMoneda(liquido, principal)}</div>
+      ${debito.length > 1 && html`<div style=${{ fontSize: '12.5px', color: 'var(--muted)' }}>en ${debito.length} cuentas de débito</div>`}
+      <div style=${{ margin: '12px 0 0', fontSize: '13px', lineHeight: 1.55 }}>
+        ${porPagar > 0 ? html`
+          <span style=${{ color: 'var(--muted)' }}>${proximoPago
+            ? `Fijos hasta tu próximo ingreso (${fmtFecha(hastaD)})`
+            : `Fijos de los próximos 15 días (hasta ${fmtFecha(hastaD)})`}:</span>
+          <b class="num" style=${{ color: 'var(--gasto)' }}>−${fmtConMoneda(porPagar, principal)}</b><br/>
+          ${trasPagos >= 0
+            ? html`<span style=${{ color: 'var(--muted)' }}>te sobraría </span><b class="num" style=${{ color: 'var(--ingreso)' }}>${fmtConMoneda(trasPagos, principal)}</b>`
+            : html`<span style=${{ color: 'var(--muted)' }}>te faltaría </span><b class="num" style=${{ color: 'var(--gasto)' }}>${fmtConMoneda(-trasPagos, principal)}</b>`}`
+        : html`<span style=${{ color: 'var(--muted)' }}>${fijosActivos.some(f => f.tipo === 'gasto')
+          ? 'Nada fijo por pagar en este período.'
+          : 'Sin gastos fijos: prográmalos abajo (＋) para saber si te alcanza.'}</span>`}
       </div>
       <div class="chips-scroll" style=${{ marginTop: '12px', justifyContent: 'center' }}>
-        ${S.cuentas.filter(cuentaEnPatrimonio).map(c => html`
-          <button key=${c.id} class="chip" onClick=${() => nav('#/cuentas')}>
-            <${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}
-            <span class="num" style=${{ color: saldoConvertido(c, txs, S.tasas, principal) < 0 ? 'var(--gasto)' : 'inherit' }}>
-              ${fmtConMoneda(saldoCuenta(c, txs, S.tasas), c.moneda)}
-            </span>
-          </button>`)}
+        ${debito.length > 0 && html`<button class="chip" onClick=${() => nav('#/cuentas')}>
+          <${IconoCuenta} tipo="bancaria" /> Débito <span class="num">${fmtConMoneda(liquido, principal)}</span>
+        </button>`}
+        ${debeTarjetas > 0 && html`<button class="chip" onClick=${() => nav('#/cuentas')}>
+          <${IconoCuenta} tipo="tarjeta" /> Tarjetas <span class="num" style=${{ color: 'var(--gasto)' }}>−${fmtConMoneda(debeTarjetas, principal)}</span>
+        </button>`}
+        ${debePrestamos > 0 && html`<button class="chip" onClick=${() => nav('#/cuentas')}>
+          <${IconoCuenta} tipo="deuda" /> Préstamos <span class="num" style=${{ color: 'var(--gasto)' }}>−${fmtConMoneda(debePrestamos, principal)}</span>
+        </button>`}
       </div>
     </div>
 

@@ -272,6 +272,9 @@ const caramelo = html`<circle cx="12" cy="12" r="4.5" />
 const wifi = html`<path d="M4 9.5a12.5 12.5 0 0 1 16 0M7 13a8.5 8.5 0 0 1 10 0M9.8 16.3a4.5 4.5 0 0 1 4.4 0" />
   <path d="M12 19.5v.01" stroke-width="2.4" />`;
 
+const parqueo = html`<rect x="4" y="4" width="16" height="16" rx="3.5" />
+  <path d="M9.5 16.5v-9h3a2.7 2.7 0 0 1 0 5.4h-3" />`;
+
 const CONTENIDO_CATEGORIA_PROPIA = {
   '🍔': hamburguesa, '🛒': carrito, '🍽️': cubiertos, '☕': tazaCafe,
   '🚗': coche, '⛽': gasolina, '🛠️': llave,
@@ -303,6 +306,8 @@ const CONTENIDO_CATEGORIA_PROPIA = {
   '🍬': caramelo,
   '🍭': caramelo,
   '📶': wifi,
+  '🅿️': parqueo,
+  '🅿': parqueo,
 };
 
 /** Versión exportada para pruebas: emojis de categorías con icono propio. */
