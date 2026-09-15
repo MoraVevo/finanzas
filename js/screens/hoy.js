@@ -357,7 +357,7 @@ function EditorFijo({ f, S, cerrar }) {
         <div class="dato-cuenta">¿Con qué se paga? (opcional)</div>
         <div class="chips-scroll" style=${{ marginTop: '6px' }}>
           <button class=${'chip' + (!d.fuente ? ' sel' : '')} onClick=${() => set({ fuente: null })}>Líquido</button>
-          ${S.cuentas.filter(c => !c.archivada).map(c => html`<button key=${c.id}
+          ${S.cuentas.filter(cuentaEnPatrimonio).map(c => html`<button key=${c.id}
             class=${'chip' + (d.fuente === c.id ? ' sel' : '')}
             onClick=${() => set({ fuente: c.id })}><${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}</button>`)}
         <//>

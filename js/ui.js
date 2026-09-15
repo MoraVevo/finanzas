@@ -249,7 +249,7 @@ export function PickerCuentas({ titulo = 'Elegir cuenta', cuentas, txs, tasas = 
       ${lista.map(c => html`<div key=${c.id} class="fila" onClick=${() => onPick(c)}>
         <span class="emoji"><${IconoCuenta} tipo=${c.tipo} /></span>
         <div class="cuerpo">
-          <div class="titulo">${c.nombre}</div>
+          <div class="titulo">${c.nombre}${c.tipo === 'tercero' && html`<span class="badge-tercero">Tercero</span>`}</div>
           <div class="sub">${[c.banco, c.numero, c.moneda].filter(Boolean).join(' · ')}</div>
         </div>
         <div class=${sinSaldo ? 'monto' : 'monto num ' + (saldoCuenta(c, txs, tasas) < 0 ? 'm-gasto' : '')}>${sinSaldo ? '' : fmtConMoneda(saldoCuenta(c, txs, tasas), c.moneda)}</div>

@@ -42,9 +42,8 @@ export default function Cuentas() {
       ${activas.map(c => html`<div key=${c.id} class="fila" onClick=${() => setDetalle(c)}>
         <span class="emoji"><${IconoCuenta} tipo=${c.tipo} /></span>
         <div class="cuerpo">
-          <div class="titulo">${c.nombre}</div>
+          <div class="titulo">${c.nombre}${c.tipo === 'tercero' && html`<span class="badge-tercero">No es tuyo</span>`}</div>
           <div class="sub">${[
-            c.tipo === 'tercero' && 'No es tuyo · acumula depósitos',
             c.banco, c.numero && '№ ' + c.numero,
             c.tipo === 'tarjeta' && c.limite > 0 && `Disponible ${fmtConMoneda(Math.max(0, c.limite + saldoCuenta(c, txs, S.tasas)), c.moneda)}`,
             c.tipo === 'tarjeta' && c.corte && `Corte ${c.corte}`,

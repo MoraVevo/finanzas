@@ -299,7 +299,7 @@ function VistaRango({ S, todo }) {
   const desde3 = isoDia(new Date(hoyMS - 89 * 86400000)) + 'T00:00';
   const hasta3 = isoDia(new Date(hoyMS + 86400000)) + 'T00:00';
   const st3 = statsRango(desde3, hasta3, txs, S);
-  const ahorro3 = st3.ingreso - st3.gasto;
+  const ahorro3 = st3.neto; // ingreso − gasto − salidas a terceros (90 días)
   // alcance pasivo (tarjeta/deuda): la ficha cambia — deudas y pagos, no ingresos
   const cuentaObj = cuentaScope ? S.cuentas.find(c => c.id === cuentaScope) : null;
   const esPasiva = !!cuentaObj && (cuentaObj.tipo === 'tarjeta' || cuentaObj.tipo === 'deuda');
@@ -392,7 +392,8 @@ function VistaRango({ S, todo }) {
     </div>
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">${ahorro3 >= 0 ? 'Ahorro' : 'Desahorro'}</div>
-        <div class="val" style=${{ color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : '−'}${fmtFicha(Math.abs(ahorro3))}</div></div>
+        <div class="val" style=${{ color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : '−'}${fmtFicha(Math.abs(ahorro3))}</div>
+        ${st3.aTerceros > 0 && html`<div class="etq" style=${{ marginTop: '2px' }}>sin ${fmtFicha(st3.aTerceros)} a terceros</div>`}</div>
       <div class="stat-box"><div class="etq">Gasto / día</div>
         <div class="val">${fmtFicha(Math.round(promDia))}</div></div>
       <div class="stat-box"><div class="etq">Mayor gasto</div>

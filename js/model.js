@@ -79,13 +79,15 @@ export function patrimonio(cuentas, txs, tasas, principal) {
 }
 
 /** Estadísticas de un rango [desde, hasta) en ISO local. Las transferencias
- *  quedan fuera de gasto/ingreso. Acepta el store completo (S). */
-export function statsRango(desde, hasta, txs, { categorias, tasas, ajustes, principal }) {
+ *  quedan fuera de gasto/ingreso — salvo las dirigidas a cuentas de terceros,
+ *  que sí restan del neto: ese dinero no es tuyo. Acepta el store completo (S). */
+export function statsRango(desde, hasta, txs, { cuentas = [], categorias, tasas, ajustes, principal }) {
   principal = principal || ajustes?.monedaPrincipal || 'GTQ';
   const enRango = txs.filter(t => t.fecha >= desde && t.fecha < hasta);
   const catPorId = new Map(categorias.map(c => [c.id, c]));
+  const terceros = new Set(cuentas.filter(c => c.tipo === 'tercero').map(c => c.id));
   const porCategoria = new Map(), porCategoriaIngreso = new Map(), porEtiqueta = new Map(), porDia = new Map();
-  let gasto = 0, ingreso = 0, transferencias = 0;
+  let gasto = 0, ingreso = 0, transferencias = 0, aTerceros = 0;
   for (const tx of enRango) {
     const montoP = convertir(tx.monto, tx.moneda, principal, tasas, tx.fecha);
     if (tx.tipo === 'gasto') {
@@ -100,6 +102,7 @@ export function statsRango(desde, hasta, txs, { categorias, tasas, ajustes, prin
       porCategoriaIngreso.set(cid, (porCategoriaIngreso.get(cid) || 0) + montoP);
     } else {
       transferencias += montoP;
+      if (terceros.has(tx.cuentaDestino) && !terceros.has(tx.cuenta)) aTerceros += montoP;
     }
   }
   const aLista = m => [...m.entries()].map(([id, monto]) => ({
@@ -108,7 +111,8 @@ export function statsRango(desde, hasta, txs, { categorias, tasas, ajustes, prin
     emoji: id === '_sin' ? '❓' : (catPorId.get(id)?.emoji || '🏷️'),
   })).sort((a, b) => b.monto - a.monto);
   return {
-    gasto, ingreso, transferencias, neto: ingreso - gasto,
+    gasto, ingreso, transferencias, aTerceros,
+    neto: ingreso - gasto - aTerceros,
     porCategoria: aLista(porCategoria), porCategoriaIngreso: aLista(porCategoriaIngreso),
     porEtiqueta: aLista(porEtiqueta),
     porDia: [...porDia.entries()].map(([dia, monto]) => ({ dia, monto })).sort((a, b) => a.dia.localeCompare(b.dia)),
