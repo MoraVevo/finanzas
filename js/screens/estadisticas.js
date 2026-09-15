@@ -9,6 +9,7 @@ import { useStore, recargar, toast } from '../store.js';
 import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
 import { IconoCuenta, IconoCategoria } from '../iconos.js';
+import ActividadBancaria from '../actividad-bancaria.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
 const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -338,9 +339,20 @@ function VistaRango({ S, todo }) {
     return t.length <= 10 ? t : `${monedaInfo(cod).simbolo}${fmtCompacto(v, cod)}`;
   };
 
+  // En un banco importa la liquidez: las transferencias forman parte de las
+  // entradas y salidas. Mantener las mismas fechas del selector visible.
+  if (cuentaObj?.tipo === 'bancaria') return html`<div>
+    <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
+    <${SelectorCuentas} S=${S} todo=${todo} cuentaScope=${cuentaScope} setCuentaScope=${setCuentaScope} />
+    <${ActividadBancaria} cuenta=${cuentaObj} txs=${todo} tasas=${S.tasas}
+      cuentas=${S.cuentas} desde=${desde} hasta=${hasta} />
+  </div>`;
+
   return html`<div>
     <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
     <${SelectorCuentas} S=${S} todo=${todo} cuentaScope=${cuentaScope} setCuentaScope=${setCuentaScope} />
+
+    ${!cuentaScope && html`<p class="ab-contexto">Para ver entradas, salidas y transferencias de un banco, elige su cuenta arriba.</p>`}
 
     ${esPasiva ? html`
     <div class="stats-grid-3">

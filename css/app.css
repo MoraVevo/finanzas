@@ -328,23 +328,29 @@ input[type="datetime-local"], input[type="date"] {
 .barra-fila .pista { height: 8px; border-radius: 5px; background: var(--chip); overflow: hidden; }
 .barra-fila .lleno { height: 100%; border-radius: 5px; background: var(--accent); }
 
-/* Gráficas del detalle de una cuenta bancaria */
-.cuenta-graficas { overflow: hidden; }
-.cuenta-chart { min-width: 0; }
-.cuenta-chart-titulo {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  margin-bottom: 2px; font-size: 12.5px; font-weight: 700;
-}
-.cuenta-chart-titulo > b { color: var(--accent); }
-.cuenta-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
-.cuenta-chart svg text { font-family: var(--font); font-size: 8.5px; }
-.cuenta-chart-separador { height: 1px; background: var(--line); margin: 12px 0; }
-.cuenta-chart-leyenda { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10.5px; font-weight: 600; }
-.cuenta-chart-leyenda i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
-.cuenta-chart-leyenda i.entra { background: var(--ingreso); }
-.cuenta-chart-leyenda i.sale { background: var(--gasto); margin-left: 3px; }
-.cuenta-chart-totales { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; color: var(--muted); }
-.cuenta-chart-totales b { margin-left: 3px; }
+/* Resumen de liquidez por cuenta, compartido por Cuentas y Estadísticas. */
+.ab-contexto, .ab-nota { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0 0 12px; }
+.ab-nota { margin: 10px 0 0; }
+.ab-metricas .val { font-size: clamp(12px, 3.4vw, 17px); }
+.ab-desglose { margin: 0; font-size: 13px; }
+.ab-desglose > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ab-desglose dt { min-width: 0; }
+.ab-desglose dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; text-align: right; }
+.ab-periodo { margin-top: 18px; }
+.ab-periodo-titulo { font-size: 13px; font-weight: 700; text-transform: capitalize; margin-bottom: 8px; }
+.ab-barra-etq { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; margin: 6px 0 4px; }
+.ab-barra-etq b { overflow-wrap: anywhere; text-align: right; }
+.ab-pista { height: 8px; background: var(--chip); border-radius: 5px; overflow: hidden; }
+.ab-pista > div { height: 100%; border-radius: inherit; }
+.ab-transferencias { margin-top: 12px; font-size: 13px; }
+.ab-transferencias summary { cursor: pointer; padding: 12px 0; line-height: 1.5; }
+.ab-contraparte { display: grid; gap: 6px; border-top: 1px solid var(--line); padding: 12px 0; overflow-wrap: anywhere; }
+.ab-contraparte > span { display: flex; justify-content: space-between; gap: 12px; }
+.ab-saldo svg { display: block; width: 100%; height: auto; margin-top: 12px; }
+.ab-saldo svg text { font: 12px var(--font); fill: var(--muted); }
+.ab-lectura { display: block; font-size: 12px; margin-top: 6px; }
+.ab-lectura input { display: block; width: 100%; min-height: 44px; padding: 0; margin: 0; accent-color: var(--accent); }
+.ab-valor { text-align: center; font-size: 14px; font-weight: 700; }
 
 /* Gráfica de flujo interactiva: 1 dedo desplaza (vertical = scroll de página), pellizco = zoom */
 .flujo-chart { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: grab; }

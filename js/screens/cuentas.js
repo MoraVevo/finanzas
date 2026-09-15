@@ -3,10 +3,11 @@
 import { html, useState, useEffect } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
-import { saldoCuenta, saldoConvertido, convertir, efectoTx, serieSaldos, planCuotas, TIPOS_CUENTA } from '../model.js';
+import { saldoCuenta, saldoConvertido, convertir, planCuotas, TIPOS_CUENTA } from '../model.js';
+import ActividadBancaria from '../actividad-bancaria.js';
 import { Sheet, SelectorMoneda, FilaTx, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_EDITAR, ICONO_CAJA, ICONO_RESTAURAR } from '../iconos.js';
-import { uid, textoAEntero, enteroATexto, fmtConMoneda, fmtCompacto, fmtFecha, isoLocal, isoDia, claveMesActual, sumarMesClave } from '../util.js';
+import { uid, textoAEntero, enteroATexto, fmtConMoneda, fmtFecha, isoLocal, isoDia, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
 export default function Cuentas() {
   const S = useStore();
@@ -112,7 +113,6 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
   ].filter(Boolean);
   const saldo = saldoCuenta(cuenta, txs, S.tasas);
   const conLimite = cuenta.tipo === 'tarjeta' && cuenta.limite > 0;
-  const tieneActividad = txs.some(t => t.cuenta === cuenta.id || t.cuentaDestino === cuenta.id);
   return html`<div>
     <div class="tarjeta" style=${{ marginBottom: '10px' }}>
       <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -129,8 +129,10 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
       </div>
     </div>
 
-    ${cuenta.tipo === 'bancaria' && tieneActividad && html`
-      <${GraficasCuentaBancaria} cuenta=${cuenta} txs=${txs} tasas=${S.tasas} />
+    ${cuenta.tipo === 'bancaria' && html`
+      <p class="ab-contexto">Últimos 6 meses. Para elegir otro período, abre Estadísticas y selecciona esta cuenta.</p>
+      <${ActividadBancaria} cuenta=${cuenta} txs=${txs} tasas=${S.tasas} cuentas=${S.cuentas}
+        desde=${sumarMesClave(claveMesActual(), -5) + '-01T00:00'} hasta=${rangoMes(claveMesActual())[1]} />
     `}
 
     ${datos.some(d => d[1]) && html`<div class="tarjeta" style=${{ paddingTop: '4px' }}>
@@ -174,104 +176,6 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
   </div>`;
 }
 
-/* ---------- Gráficas útiles de una cuenta bancaria ---------- */
-const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-
-function actividadMensualCuenta(cuenta, txs, tasas, meses = 6) {
-  const actual = claveMesActual();
-  const claves = Array.from({ length: meses }, (_, i) => sumarMesClave(actual, i - meses + 1));
-  const porMes = new Map(claves.map(clave => [clave, { clave, entra: 0, sale: 0 }]));
-  for (const tx of txs) {
-    const fila = porMes.get(tx.fecha.slice(0, 7));
-    if (!fila) continue;
-    const delta = efectoTx(tx, cuenta.id, tasas, cuenta.moneda);
-    if (delta > 0) fila.entra += delta;
-    else if (delta < 0) fila.sale += -delta;
-  }
-  return claves.map(k => porMes.get(k));
-}
-
-function GraficasCuentaBancaria({ cuenta, txs, tasas }) {
-  const desdeD = sumarMesClave(claveMesActual(), -5) + '-01';
-  const hastaD = isoDia();
-  const saldos = serieSaldos({ cuentas: [cuenta], txs, tasas, principal: cuenta.moneda, desdeD, hastaD, cuentaId: cuenta.id });
-  const meses = actividadMensualCuenta(cuenta, txs, tasas);
-  return html`<div class="tarjeta cuenta-graficas">
-    <h3>Actividad · últimos 6 meses</h3>
-    <${ChartSaldoCuenta} datos=${saldos} moneda=${cuenta.moneda} />
-    <div class="cuenta-chart-separador"></div>
-    <${ChartActividadCuenta} datos=${meses} moneda=${cuenta.moneda} />
-    <div class="dato-cuenta" style=${{ marginTop: '8px' }}>
-      Incluye transferencias: no son gastos, pero sí explican la liquidez de esta cuenta.
-    </div>
-  </div>`;
-}
-
-function ChartSaldoCuenta({ datos, moneda }) {
-  const W = 320, H = 132, PL = 43, PR = 8, PT = 12, PB = 22;
-  const valores = datos.map(d => d.balance);
-  const min = Math.min(0, ...valores), max = Math.max(0, ...valores);
-  const margen = Math.max(1, (max - min) * .08);
-  const lo = min - margen, hi = max + margen;
-  const x = i => PL + i / Math.max(1, datos.length - 1) * (W - PL - PR);
-  const y = v => PT + (hi - v) / Math.max(1, hi - lo) * (H - PT - PB);
-  const paso = Math.max(1, Math.ceil(datos.length / 90));
-  const visibles = datos.filter((_, i) => i % paso === 0 || i === datos.length - 1);
-  const linea = visibles.map((d, i) => `${i ? 'L' : 'M'}${x(datos.indexOf(d)).toFixed(1)},${y(d.balance).toFixed(1)}`).join(' ');
-  const area = visibles.length ? `${linea} L${x(datos.indexOf(visibles.at(-1))).toFixed(1)},${H - PB} L${x(datos.indexOf(visibles[0])).toFixed(1)},${H - PB} Z` : '';
-  const marcas = [0, 2, 5].map(m => {
-    const clave = sumarMesClave(claveMesActual(), m - 5);
-    const idx = datos.findIndex(d => d.fecha.startsWith(clave));
-    return idx >= 0 ? { idx, texto: MESES_CORTOS[+clave.slice(5, 7) - 1] } : null;
-  }).filter(Boolean);
-  const ticks = [lo + (hi - lo) * .25, lo + (hi - lo) * .75];
-  return html`<div class="cuenta-chart">
-    <div class="cuenta-chart-titulo"><span>Saldo diario</span><b class="num">${fmtConMoneda(datos.at(-1)?.balance || 0, moneda)}</b></div>
-    <svg viewBox=${`0 0 ${W} ${H}`} role="img" aria-label="Evolución diaria del saldo durante los últimos seis meses">
-      <title>Evolución del saldo</title>
-      ${ticks.map(v => html`<g>
-        <line x1=${PL} x2=${W - PR} y1=${y(v)} y2=${y(v)} stroke="var(--line)" stroke-width="1" />
-        <text x=${PL - 5} y=${y(v) + 3} text-anchor="end" fill="var(--muted)">${fmtCompacto(v, moneda)}</text>
-      </g>`)}
-      ${lo < 0 && hi > 0 && html`<line x1=${PL} x2=${W - PR} y1=${y(0)} y2=${y(0)} stroke="var(--muted)" stroke-width="1" />`}
-      <path d=${area} fill="var(--accent-soft)" />
-      <path d=${linea} fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
-      ${marcas.map(m => html`<text x=${x(m.idx)} y=${H - 5} text-anchor=${m.idx === 0 ? 'start' : m.idx === datos.length - 1 ? 'end' : 'middle'} fill="var(--muted)">${m.texto}</text>`)}
-      ${datos.length && html`<circle cx=${x(datos.length - 1)} cy=${y(datos.at(-1).balance)} r="3.5" fill="var(--accent)" />`}
-    </svg>
-  </div>`;
-}
-
-function ChartActividadCuenta({ datos, moneda }) {
-  const W = 320, H = 142, PL = 43, PR = 8, PT = 10, PB = 24;
-  const max = Math.max(1, ...datos.flatMap(d => [d.entra, d.sale]));
-  const base = H - PB, grupo = (W - PL - PR) / datos.length;
-  const alto = v => v / max * (base - PT);
-  const totalIn = datos.reduce((s, d) => s + d.entra, 0);
-  const totalOut = datos.reduce((s, d) => s + d.sale, 0);
-  return html`<div class="cuenta-chart">
-    <div class="cuenta-chart-titulo"><span>Entradas y salidas</span><span class="cuenta-chart-leyenda"><i class="entra"></i>Entra <i class="sale"></i>Sale</span></div>
-    <svg viewBox=${`0 0 ${W} ${H}`} role="img" aria-label="Entradas y salidas mensuales de la cuenta durante los últimos seis meses">
-      <title>Entradas y salidas mensuales</title>
-      <line x1=${PL} x2=${W - PR} y1=${base} y2=${base} stroke="var(--line)" stroke-width="1" />
-      <line x1=${PL} x2=${W - PR} y1=${PT} y2=${PT} stroke="var(--line)" stroke-width="1" />
-      <text x=${PL - 5} y=${PT + 4} text-anchor="end" fill="var(--muted)">${fmtCompacto(max, moneda)}</text>
-      <text x=${PL - 5} y=${base + 3} text-anchor="end" fill="var(--muted)">0</text>
-      ${datos.map((d, i) => {
-        const hIn = alto(d.entra), hOut = alto(d.sale), x0 = PL + i * grupo;
-        return html`<g>
-          <rect x=${x0 + grupo * .17} y=${base - hIn} width=${Math.max(5, grupo * .28)} height=${hIn} rx="2.5" fill="var(--ingreso)"><title>${d.clave}: entró ${fmtConMoneda(d.entra, moneda)}</title></rect>
-          <rect x=${x0 + grupo * .53} y=${base - hOut} width=${Math.max(5, grupo * .28)} height=${hOut} rx="2.5" fill="var(--gasto)"><title>${d.clave}: salió ${fmtConMoneda(d.sale, moneda)}</title></rect>
-          <text x=${x0 + grupo / 2} y=${H - 6} text-anchor="middle" fill="var(--muted)">${MESES_CORTOS[+d.clave.slice(5, 7) - 1]}</text>
-        </g>`;
-      })}
-    </svg>
-    <div class="cuenta-chart-totales num">
-      <span>Entró <b class="m-ingreso">${fmtConMoneda(totalIn, moneda)}</b></span>
-      <span>Salió <b class="m-gasto">${fmtConMoneda(totalOut, moneda)}</b></span>
-    </div>
-  </div>`;
-}
 
 /* ---------- Editor ---------- */
 function EditorCuenta({ c, S, cerrar, alGuardar }) {
