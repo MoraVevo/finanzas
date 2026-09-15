@@ -350,6 +350,9 @@ export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fi
     if (cuentaId && (!pasiva || r.fuente !== cuentaId)) continue;
     const montoP = convertir(r.monto, r.moneda, principal, tasas, hoyD);
     for (const fecha of fechasFijo(r, hoyD, hastaD)) {
+      // lo de HOY ya materializado vive en el saldo real: no proyectarlo de nuevo
+      if (fecha === hoyD && ((r.tipo === 'ingreso' && r.cuenta) || (r.tipo === 'gasto' && r.fuente))
+        && txs.some(t => txEquivale(t, r, hoyD))) continue;
       const delta = cuentaId ? -montoP : (r.tipo === 'ingreso' ? montoP : (pasiva ? 0 : -montoP));
       eventos.push({ fecha, delta, f: {
         id: 'fijo-' + r.id + '-' + fecha, esFijo: true, tipo: r.tipo,
@@ -489,35 +492,73 @@ export function ocurrenciasFijo(regla, desdeD, hastaD) {
 }
 
 /** ¿Existe ya una transacción de este fijo? Por marca (fijoId) o por
- *  equivalencia: mismo día, misma cuenta, moneda y monto dentro de ±1%. */
+ *  equivalencia: mismo día, misma cuenta (destino si ingreso, fuente si
+ *  gasto), moneda y monto dentro de ±1%. */
 export function txEquivale(t, fijo, fechaISO) {
-  if (!t || t.eliminada || t.tipo !== 'ingreso') return false;
-  if (t.fecha.slice(0, 10) !== fechaISO || t.cuenta !== fijo.cuenta) return false;
+  if (!t || t.eliminada || t.tipo !== fijo.tipo) return false;
+  if (t.fecha.slice(0, 10) !== fechaISO) return false;
+  const cuentaFija = fijo.tipo === 'ingreso' ? fijo.cuenta : fijo.fuente;
+  if (t.cuenta !== cuentaFija) return false;
   if (t.fijoId === fijo.id) return true;
   const tol = Math.max(100, Math.round(fijo.monto * 0.01));
   return t.moneda === fijo.moneda && Math.abs(t.monto - fijo.monto) <= tol;
 }
 
-/** Fijos de INGRESO con cuenta destino cuya ocurrencia ya llegó y todavía no
- *  existe como transacción (ni materializada ni registrada a mano). Devuelve
- *  [{ fijo, fecha }] listo para crear. Puro. */
+/** Fijos con impacto real (ingreso con cuenta destino, gasto con fuente) cuya
+ *  ocurrencia ya llegó y no existe como transacción (ni materializada ni
+ *  registrada a mano). Devuelve [{ fijo, fecha }] listo para crear. Puro. */
 export function fijosPendientes({ fijos = [], txs = [], hoyD = isoDia() }) {
   const porDia = new Map();
   for (const t of txs) {
-    if (t.eliminada || t.tipo !== 'ingreso') continue;
+    if (t.eliminada || (t.tipo !== 'ingreso' && t.tipo !== 'gasto')) continue;
     const d = t.fecha.slice(0, 10);
     if (!porDia.has(d)) porDia.set(d, []);
     porDia.get(d).push(t);
   }
   const sumarDia = (iso, n) => isoDia(new Date(Date.parse(iso + 'T12:00') + n * 86400000));
   const out = [];
-  for (const f of fijos.filter(r => r.activa !== false && r.tipo === 'ingreso' && r.cuenta)) {
+  for (const f of fijos.filter(r => r.activa !== false
+    && ((r.tipo === 'ingreso' && r.cuenta) || (r.tipo === 'gasto' && r.fuente)))) {
     const creado = (f.creadoEn || '').slice(0, 10);
     let desde = creado;
     if (f.materializadoHasta && sumarDia(f.materializadoHasta, 1) > desde) desde = sumarDia(f.materializadoHasta, 1);
     if (!desde || desde > hoyD) continue;
     for (const fecha of ocurrenciasFijo(f, desde, hoyD)) {
       if (!(porDia.get(fecha) || []).some(t => txEquivale(t, f, fecha))) out.push({ fijo: f, fecha });
+    }
+  }
+  return out;
+}
+
+/** Cuotas de planes con cuenta de pago cuya fecha ya llegó y no existe como
+ *  transferencia (materializada o registrada a mano). Cada pago es una
+ *  transferencia real pagaCon → tarjeta/deuda. Puro. */
+export function cuotasPendientes({ cuotas = [], txs = [], hoyD = isoDia() }) {
+  const porDia = new Map();
+  for (const t of txs) {
+    if (t.eliminada || t.tipo !== 'transferencia') continue;
+    const d = t.fecha.slice(0, 10);
+    if (!porDia.has(d)) porDia.set(d, []);
+    porDia.get(d).push(t);
+  }
+  const sumarDia = (iso, n) => isoDia(new Date(Date.parse(iso + 'T12:00') + n * 86400000));
+  const out = [];
+  for (const p of cuotas.filter(q => q.activa !== false && q.pagaCon && q.cuentaId)) {
+    const info = planCuotas(p, hoyD);
+    if (info.terminado) continue;
+    const creado = (p.creadoEn || '').slice(0, 10);
+    let desde = creado;
+    if (p.materializadoHasta && sumarDia(p.materializadoHasta, 1) > desde) desde = sumarDia(p.materializadoHasta, 1);
+    if (!desde || desde > hoyD) continue;
+    const tol = Math.max(100, Math.round(info.cuota * 0.01));
+    for (let k = 1; k <= info.n; k++) {
+      const fecha = fechaCuotaPlan(p, k);
+      if (fecha < desde || fecha > hoyD) continue;
+      const monto = info.montoK(k);
+      const yaExiste = (porDia.get(fecha) || []).some(t =>
+        t.cuenta === p.pagaCon && t.cuentaDestino === p.cuentaId
+        && (t.fijoId === p.id || (t.moneda === p.moneda && Math.abs(t.monto - monto) <= tol)));
+      if (!yaExiste) out.push({ plan: p, fecha, monto, k });
     }
   }
   return out;
@@ -625,7 +666,11 @@ export function pagosTarjeta(c, { txs, tasas, principal, fijos = [], cuotas = []
   for (const r of (fijos || []).filter(r => r.activa !== false && r.fuente === c.id && r.tipo === 'gasto')) {
     const montoP = convertir(r.monto, r.moneda, principal, tasas, hoyD);
     const horizonte = `${+hoyD.slice(0, 4) + 1}-${hoyD.slice(5, 7)}-${hoyD.slice(8, 10)}`;
-    for (const fecha of fechasFijo(r, hoyD, horizonte)) cargos.push({ fecha, montoP });
+    for (const fecha of fechasFijo(r, hoyD, horizonte)) {
+      // el cargo de hoy ya materializado está en el saldo real: no sumarlo dos veces
+      if (fecha === hoyD && txs.some(t => txEquivale(t, r, hoyD))) continue;
+      cargos.push({ fecha, montoP });
+    }
   }
   let refPrev = null;
   return pagos.map(pago => {
@@ -682,20 +727,21 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], c
   const fuentePasiva = id => { const c = cuentaDe(id); return !!c && (c.tipo === 'tarjeta' || c.tipo === 'deuda'); };
 
   const eventos = [];
-  // ingreso fijo de HOY que ya existe como transacción (materializado o a
-  // mano): no se vuelve a proyectar — ya está en el saldo base
-  const ingresosHoy = txs.filter(t => !t.eliminada && t.tipo === 'ingreso' && t.fecha.slice(0, 10) === hoyD);
+  // fijo de HOY que ya existe como transacción (materializado o registrado a
+  // mano): no se vuelve a proyectar — ya está en el saldo real
+  const delDia = txs.filter(t => !t.eliminada && (t.tipo === 'ingreso' || t.tipo === 'gasto') && t.fecha.slice(0, 10) === hoyD);
+  const yaReal = r => delDia.some(t => txEquivale(t, r, hoyD));
   for (const r of fijos.filter(r => r.activa !== false)) {
     const montoP = convertir(r.monto, r.moneda, principal, tasas, hoyD);
     if (r.tipo === 'gasto' && r.fuente && fuentePasiva(r.fuente)) {
       for (const fecha of fechasFijo(r, hoyD, finD)) {
+        if (fecha === hoyD && yaReal(r)) continue; // el cargo ya está en el saldo de la tarjeta
         eventos.push({ fecha, tipo: 'deuda', fijoId: r.id, fuente: r.fuente,
           nombre: r.nombre || 'Gasto fijo', montoP, moneda: principal });
       }
     } else {
-      const yaLlego = r.tipo === 'ingreso' && r.cuenta && ingresosHoy.some(t => txEquivale(t, r, hoyD));
       for (const fecha of fechasFijo(r, hoyD, finD)) {
-        if (fecha === hoyD && yaLlego) continue;
+        if (fecha === hoyD && yaReal(r)) continue;
         eventos.push({
           fecha, tipo: r.tipo, fijoId: r.id,
           nombre: r.nombre || (r.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo'),

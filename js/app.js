@@ -2,7 +2,7 @@
 import { html, render, useEffect, Component } from '../vendor/preact-standalone.module.js';
 import fin from './db.js';
 import { useStore, recargar, nav, getState } from './store.js';
-import { fijosPendientes } from './model.js';
+import { fijosPendientes, cuotasPendientes } from './model.js';
 import { uid, isoDia } from './util.js';
 import { ICONOS_TAB } from './iconos.js';
 import Onboarding from './screens/onboarding.js';
@@ -38,18 +38,35 @@ class Guarda extends Component {
 (async () => {
   await fin.inicial();
   await recargar();
-  // Fijos de ingreso con cuenta destino: el día que llegan se vuelven
-  // transacción real en esa cuenta (a las 08:00) — dinero en el saldo, no
-  // solo en las proyecciones. Si ya lo registraste a mano, no se duplica.
+  // Fijos con impacto real (ingreso → cuenta destino, gasto → fuente): el día
+  // que llegan se vuelven transacción real (08:00) — dinero en el saldo, no
+  // solo en las proyecciones. Las cuotas pagan solas: transferencia de la
+  // cuenta elegida a la tarjeta/deuda. Si ya lo registraste a mano, no duplica.
   const S0 = getState();
-  if (S0.ajustes?.iniciado && (S0.fijos || []).some(f => f.activa !== false && f.tipo === 'ingreso' && f.cuenta)) {
+  const materializables = f => f.activa !== false && ((f.tipo === 'ingreso' && f.cuenta) || (f.tipo === 'gasto' && f.fuente));
+  const cuotasActivas = p => p.activa !== false && p.pagaCon && p.cuentaId;
+  if (S0.ajustes?.iniciado && ((S0.fijos || []).some(materializables) || (S0.cuotas || []).some(cuotasActivas))) {
     const hoy = isoDia();
-    const pend = fijosPendientes({ fijos: S0.fijos, txs: await fin.todasTx(), hoyD: hoy });
+    const todas = await fin.todasTx();
+    const pend = fijosPendientes({ fijos: S0.fijos, txs: todas, hoyD: hoy });
     for (const { fijo, fecha } of pend) {
       await fin.guardarTx({
-        id: uid(), tipo: 'ingreso', monto: fijo.monto, moneda: fijo.moneda,
-        cuenta: fijo.cuenta, cuentaDestino: null, categoria: null, etiquetas: [],
-        motivo: fijo.nombre || 'Ingreso fijo', fijoId: fijo.id,
+        id: uid(), tipo: fijo.tipo, monto: fijo.monto, moneda: fijo.moneda,
+        cuenta: fijo.tipo === 'ingreso' ? fijo.cuenta : fijo.fuente,
+        cuentaDestino: null, categoria: null, etiquetas: [],
+        motivo: fijo.nombre || (fijo.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo'),
+        fijoId: fijo.id,
+        fecha: fecha + 'T08:00', adjuntos: [], eliminada: false,
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      });
+    }
+    const cuotasPend = cuotasPendientes({ cuotas: S0.cuotas, txs: todas, hoyD: hoy });
+    for (const { plan, fecha, monto } of cuotasPend) {
+      await fin.guardarTx({
+        id: uid(), tipo: 'transferencia', monto, moneda: plan.moneda,
+        cuenta: plan.pagaCon, cuentaDestino: plan.cuentaId, montoDestino: null,
+        categoria: null, etiquetas: [],
+        motivo: 'Cuota ' + (plan.nombre || 'plan'), fijoId: plan.id,
         fecha: fecha + 'T08:00', adjuntos: [], eliminada: false,
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       });
@@ -57,11 +74,16 @@ class Guarda extends Component {
     // ventana procesada (aunque no hubiera nada pendiente): una ocurrencia
     // borrada a mano no vuelve a crearse
     for (const f of S0.fijos) {
-      if (f.activa !== false && f.tipo === 'ingreso' && f.cuenta && f.materializadoHasta !== hoy) {
+      if (materializables(f) && f.materializadoHasta !== hoy) {
         await fin.guardarFijo({ ...f, materializadoHasta: hoy });
       }
     }
-    if (pend.length) await recargar();
+    for (const p of S0.cuotas) {
+      if (cuotasActivas(p) && p.materializadoHasta !== hoy) {
+        await fin.guardarCuota({ ...p, materializadoHasta: hoy });
+      }
+    }
+    if (pend.length + cuotasPend.length > 0) await recargar();
   }
   if (!location.hash) location.hash = '#/';
   render(html`<${App} />`, document.getElementById('app'));

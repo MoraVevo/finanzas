@@ -264,9 +264,11 @@ export function EditorCuota({ p, S, cerrar }) {
     numCuotas: p.numCuotas ? String(p.numCuotas) : '',
     moneda: p.moneda || S.ajustes.monedaPrincipal,
     primeraFecha: p.primeraFecha || isoDia(),
+    pagaCon: p.pagaCon || null,
   });
   const set = x => setD({ ...d, ...x });
   const pasivas = S.cuentas.filter(c => !c.archivada && (c.tipo === 'tarjeta' || c.tipo === 'deuda'));
+  const debitos = S.cuentas.filter(c => cuentaEnPatrimonio(c) && c.tipo !== 'tarjeta' && c.tipo !== 'deuda');
   const n = parseInt(d.numCuotas, 10);
   const montoTotal = textoAEntero(d.montoTotal || '0', 2);
   const preview = montoTotal && n >= 1
@@ -277,10 +279,12 @@ export function EditorCuota({ p, S, cerrar }) {
     if (!montoTotal) { toast('Escribe el monto total financiado'); return; }
     if (!(n >= 1 && n <= 120)) { toast('Número de cuotas inválido (1-120)'); return; }
     if (!d.cuentaId) { toast('Elige la tarjeta o crédito donde se paga'); return; }
+    if (!d.pagaCon) { toast('Elige la cuenta con que se paga cada mes'); return; }
     await fin.guardarCuota({
       id: p.id || uid(), nombre: d.nombre.trim() || null, cuentaId: d.cuentaId,
       montoTotal, numCuotas: n, moneda: d.moneda,
       primeraFecha: d.primeraFecha || isoDia(),
+      pagaCon: d.pagaCon,
       activa: p.activa !== false, creadoEn: p.creadoEn || new Date().toISOString()
     });
     await recargar();
@@ -318,6 +322,14 @@ export function EditorCuota({ p, S, cerrar }) {
             onClick=${() => set({ cuentaId: c.id })}><${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}</button>`)}
         </div>
         ${pasivas.length === 0 && html`<div class="dato-cuenta">Crea una tarjeta o deuda en la pestaña Cuentas.</div>`}
+      <//>
+      <div>
+        <div class="dato-cuenta">Se descuenta de</div>
+        <div class="chips-scroll" style=${{ marginTop: '6px' }}>
+          ${debitos.map(c => html`<button key=${c.id} class=${'chip' + (d.pagaCon === c.id ? ' sel' : '')}
+            onClick=${() => set({ pagaCon: c.id })}><${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}</button>`)}
+        </div>
+        <div class="dato-cuenta" style=${{ marginTop: '4px' }}>Cada mes, la cuota se transfiere sola de esa cuenta a la tarjeta.</div>
       <//>
       <div>
         <div class="dato-cuenta">Primera cuota</div>
@@ -378,6 +390,7 @@ function EditorFijo({ f, S, cerrar }) {
     const monto = textoAEntero(d.monto || '0', 2);
     if (!monto) { toast('Escribe el monto'); return; }
     if (d.tipo === 'ingreso' && !d.cuenta) { toast('Elige la cuenta donde entra tu ingreso'); return; }
+    if (d.tipo === 'gasto' && !d.fuente) { toast('Elige con qué cuenta se paga'); return; }
     let dia = parseInt(d.dia, 10);
     if (d.frecuencia === 'semanal') { if (!(dia >= 0 && dia <= 6)) { toast('Elige el día de la semana'); return; } }
     else { if (!(dia >= 1 && dia <= 31)) { toast('Día inválido (1-31)'); return; } }
@@ -426,16 +439,16 @@ function EditorFijo({ f, S, cerrar }) {
         ${debitos.length === 0 && html`<div class="dato-cuenta">Crea una cuenta de débito en la pestaña Cuentas.</div>`}
       <//>`}
       ${d.tipo === 'gasto' && html`<div>
-        <div class="dato-cuenta">¿Con qué se paga? (opcional)</div>
+        <div class="dato-cuenta">¿Con qué cuenta se paga?</div>
         <div class="chips-scroll" style=${{ marginTop: '6px' }}>
-          <button class=${'chip' + (!d.fuente ? ' sel' : '')} onClick=${() => set({ fuente: null })}>Líquido</button>
           ${S.cuentas.filter(cuentaEnPatrimonio).map(c => html`<button key=${c.id}
             class=${'chip' + (d.fuente === c.id ? ' sel' : '')}
             onClick=${() => set({ fuente: c.id })}><${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}</button>`)}
         <//>
+        <div class="dato-cuenta" style=${{ marginTop: '4px' }}>El día que llega, el gasto se registra solo desde esa cuenta.</div>
         ${fuentePasiva && html`<div class="dato-cuenta" style=${{ marginTop: '4px' }}>
-          No descuenta tu disponible: suma a la deuda de ${fuenteObj.nombre} y se paga
-          con su día de pago (según su fecha de corte).
+          Con tarjeta/deuda: el cargo sube su deuda ese día; la pagás con tus abonos
+          (transferencias) a ${fuenteObj.nombre}.
         <//>`}
       <//>`}
       <div>
