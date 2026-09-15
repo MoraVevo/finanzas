@@ -3,12 +3,12 @@
 import { html, useState, useEffect, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, recargar, toast, nav } from '../store.js';
-import { Sheet, SelectorMoneda, EmojiPicker, Segmentado } from '../ui.js';
+import { Sheet, SelectorMoneda, IconoPicker, Segmentado } from '../ui.js';
 import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.js';
 import { exportarCSV, exportarJSON, importarJSON, copiarParaIA } from '../export.js';
 import { ICONO_ETIQUETA, IconoCat } from '../iconos.js';
 
-const VERSION = '1.66';
+const VERSION = '1.67';
 
 export default function Ajustes() {
   const S = useStore();
@@ -117,11 +117,11 @@ function PanelCategorias({ store: S, cerrar }) {
   return html`<${Sheet} titulo="Categorías" onClose=${cerrar}>
     <${Segmentado} opciones=${[['gasto', 'Gastos'], ['ingreso', 'Ingresos']]} valor=${tipo} onChange=${setTipo} />
     ${lista.map(c => html`<div key=${c.id} class="fila" onClick=${() => setEdit(c)}>
-      <span class="emoji"><${IconoCat} emoji=${c.emoji} /></span>
+      <span class="emoji"><${IconoCat} icono=${c.icono} emoji=${c.emoji} /></span>
       <div class="cuerpo"><div class="titulo">${c.nombre}</div></div>
       <span style=${{ color: 'var(--muted)' }}>›</span>
     </div>`)}
-    <button class="btn btn-suave" style=${{ marginTop: '10px' }} onClick=${() => setEdit({ emoji: '📦', nombre: '', tipo })}>＋ Nueva categoría</button>
+    <button class="btn btn-suave" style=${{ marginTop: '10px' }} onClick=${() => setEdit({ icono: null, emoji: null, nombre: '', tipo })}>＋ Nueva categoría</button>
 
     ${edit && html`<${Sheet} titulo=${edit.id ? 'Editar' : 'Nueva categoría'} onClose=${() => setEdit(null)}>
       <${EditorCategoria} c=${edit} store=${S} cerrar=${() => setEdit(null)} />
@@ -130,9 +130,10 @@ function PanelCategorias({ store: S, cerrar }) {
 }
 
 function EditorCategoria({ c, store: S, cerrar }) {
-  const [f, setF] = useState({ emoji: c.emoji || '📦', nombre: c.nombre || '', tipo: c.tipo || 'gasto' });
+  const [f, setF] = useState({ icono: c.icono || null, emoji: c.emoji || null, nombre: c.nombre || '', tipo: c.tipo || 'gasto' });
   const guardar = async () => {
     if (!f.nombre.trim()) { toast('Ponle nombre'); return; }
+    if (!f.icono && !f.emoji) { toast('Elige un icono'); return; }
     await fin.guardarCategoria({ id: c.id || uid(), ...f, nombre: f.nombre.trim() });
     await recargar(); cerrar();
   };
@@ -142,8 +143,8 @@ function EditorCategoria({ c, store: S, cerrar }) {
     catch (e) { toast(e.message); }
   };
   return html`<div>
-    <div style=${{ textAlign: 'center', fontSize: '44px', marginBottom: '8px' }}>${f.emoji}</div>
-    <${EmojiPicker} valor=${f.emoji} onPick=${emoji => setF({ ...f, emoji })} />
+    ${f.icono || f.emoji ? html`<div style=${{ textAlign: 'center', marginBottom: '8px' }}><${IconoCat} icono=${f.icono} emoji=${f.emoji} /></div>` : null}
+    <${IconoPicker} valor=${f.icono} onPick=${icono => setF({ ...f, icono })} />
     <input style=${{ marginTop: '10px' }} placeholder="Nombre" value=${f.nombre} onInput=${e => setF({ ...f, nombre: e.target.value })} />
     <${Segmentado} opciones=${[['gasto', 'Gasto'], ['ingreso', 'Ingreso']]} valor=${f.tipo} onChange=${t => setF({ ...f, tipo: t })} />
     <button class="btn btn-primario" style=${{ marginTop: '12px' }} onClick=${guardar}>Guardar</button>
@@ -187,7 +188,7 @@ function PanelPresupuestos({ store: S, cerrar }) {
       Monto máximo por categoría cada mes, en ${principal}. Déjalo vacío para no presupuestar.
     </div>
     ${gastos.map(c => html`<div key=${c.id} style=${{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-      <span style=${{ width: '26px', textAlign: 'center' }}><${IconoCat} emoji=${c.emoji} /></span>
+      <span style=${{ width: '26px', textAlign: 'center' }}><${IconoCat} icono=${c.icono} emoji=${c.emoji} /></span>
       <span style=${{ flex: 1, fontSize: '14.5px', fontWeight: 600 }}>${c.nombre}</span>
       <input style=${{ width: '110px', textAlign: 'right' }} inputMode="decimal" placeholder="—"
         defaultValue=${presup.get(c.id) ? enteroATexto(presup.get(c.id), 2) : ''}

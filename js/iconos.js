@@ -260,6 +260,50 @@ const mancuerna = html`<path d="M9.2 12h5.6" />
 const ticket = html`<path d="M3.5 9a2.5 2.5 0 0 1 0 6v1.4a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2V15a2.5 2.5 0 0 1 0-6V7.6a2 2 0 0 0-2-2h-13a2 2 0 0 0-2 2Z" />
   <path d="M14.4 5.6v2.2M14.4 10.9v2.2M14.4 16.2v2.2" />`;
 
+const bici = html`<circle cx="5.8" cy="16.4" r="3.5" />
+  <circle cx="18.2" cy="16.4" r="3.5" />
+  <path d="M5.8 16.4 9.8 8.6h3.4l5 7.8M9.8 8.6 8.3 6.4h2.9M13.2 8.6 9.8 16.4h3" />`;
+
+const balon = html`<circle cx="12" cy="12" r="8.2" />
+  <path d="M12 8.2l3.4 2.5-1.3 4h-4.2l-1.3-4Z" />
+  <path d="M12 8.2V4.1M15.4 10.7l3.9-1.2M14.1 14.7l2.5 3.3M9.9 14.7l-2.5 3.3M8.6 10.7 4.7 9.5" />`;
+
+const nota = html`<path d="M9.5 17.7V5.5l8.3-1.9v11.7" />
+  <circle cx="7.2" cy="17.9" r="2.4" />
+  <circle cx="15.5" cy="15.3" r="2.4" />`;
+
+const libro = html`<path d="M12 6.6C10 5.1 7 4.6 4 5.1v13.2c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5.1c-3-.5-6 0-8 1.5Z" />
+  <path d="M12 6.6v13.2" />`;
+
+const reloj = html`<circle cx="12" cy="13" r="7.2" />
+  <path d="M12 9.5V13l2.4 2.4" />
+  <path d="M5.2 5.4 7.4 7.3M18.8 5.4 16.6 7.3" />`;
+
+const flor = html`<circle cx="12" cy="9" r="2" />
+  <circle cx="12" cy="5.4" r="1.7" /><circle cx="15.5" cy="8" r="1.7" /><circle cx="14.2" cy="12.1" r="1.7" />
+  <circle cx="9.8" cy="12.1" r="1.7" /><circle cx="8.5" cy="8" r="1.7" />
+  <path d="M12 14.6v5.4M12 17.4c1.9 0 3.1-1 3.5-2.7" />`;
+
+const arbol = html`<path d="M12 3.5 6.8 11h2.6L5.5 17.2h13L14.6 11h2.6Z" />
+  <path d="M12 17.2v4" />`;
+
+const chupete = html`<circle cx="9.5" cy="9.5" r="5" />
+  <circle cx="9.5" cy="9.5" r="1.8" />
+  <path d="M13.2 13.2l2.6 2.6" />
+  <circle cx="18" cy="18" r="1.8" />`;
+
+const corazon = html`<path d="M12 20.3C7.4 16.9 3.5 13.4 3.5 9.6 3.5 7 5.5 5 8 5c1.6 0 3.1.9 4 2.3C12.9 5.9 14.4 5 16 5c2.5 0 4.5 2 4.5 4.6 0 3.8-3.9 7.3-8.5 10.7Z" />`;
+
+const globo = html`<circle cx="12" cy="12" r="8.2" />
+  <path d="M3.8 12h16.4M12 3.8c-2.4 2.2-3.8 5.2-3.8 8.2s1.4 6 3.8 8.2c2.4-2.2 3.8-5.2 3.8-8.2s-1.4-6-3.8-8.2Z" />`;
+
+const pizza = html`<path d="M12 3.5 20 19.4c-5.3 1.6-12.7 1.6-18 0Z" />
+  <circle cx="12" cy="10.2" r="1.1" /><circle cx="9" cy="14.6" r="1.1" /><circle cx="15" cy="14.6" r="1.1" />`;
+
+const helado = html`<path d="M8 10.5a4 4 0 0 1 8 0Z" />
+  <path d="M8 10.5h8l-3.4 9.5a.7.7 0 0 1-1.2 0Z" />
+  <circle cx="12" cy="5.4" r="1.2" />`;
+
 const tijeras = html`<circle cx="5.8" cy="6.3" r="2.4" />
   <circle cx="5.8" cy="17.7" r="2.4" />
   <path d="M8 8 20 20M8 16 20 4" />`;
@@ -323,9 +367,36 @@ const CONTENIDO_CATEGORIA_PROPIA = {
 /** Versión exportada para pruebas: emojis de categorías con icono propio. */
 export const CATEGORIAS_CON_ICONO = Object.keys(CONTENIDO_CATEGORIA_PROPIA);
 
-/** Icono de categoría para listas y grillas: SVG propio si el emoji lo tiene,
- *  si no el emoji tal cual (categorías personalizadas del usuario). */
-export function IconoCat({ emoji }) {
+/* ---------- Registro de iconos de categoría (por id) ----------
+   Paleta para crear categorías propias: solo SVG, sin emojis. Repetir un
+   icono en varias categorías está bien. */
+export const ICONOS_CATEGORIA = {
+  hamburguesa, carrito, cubiertos, cafe: tazaCafe, pizza, helado, vaso: vasoPopote, caramelo,
+  coche, camioneta: cocheFrontal, gasolina, llave, bus, bici, parqueo, llavecasa: llaveDePuerta,
+  hogar: CONTENIDO_CATEGORIA.hogar, bombilla: CONTENIDO_CATEGORIA.servicios, wifi, telefono, laptop,
+  ocio: CONTENIDO_CATEGORIA.ocio, nota, balon, mancuerna, ropa: CONTENIDO_CATEGORIA.ropa,
+  tijeras, corazon, salud: CONTENIDO_CATEGORIA.salud, bebe: chupete, familia,
+  regalo: CONTENIDO_CATEGORIA.regalos, flor, arbol, mascotas: CONTENIDO_CATEGORIA.mascotas,
+  birrete, libro, reloj, viajes: CONTENIDO_CATEGORIA.viajes, globo, bolsa: bolsaDinero,
+  billete: CONTENIDO_CATEGORIA.dinero, trabajo: CONTENIDO_CATEGORIA.trabajo,
+  crecimiento: CONTENIDO_CATEGORIA.crecimiento, escudo, recibo, caja, ticket,
+  etiqueta: CONTENIDO_CATEGORIA.tag,
+};
+
+/** SVG de un icono de categoría por id del registro; null si no existe. */
+export function IconoId({ id }) {
+  const contenido = ICONOS_CATEGORIA[id];
+  return contenido
+    ? html`<svg class="icono-categoria" ...${trazo} viewBox="0 0 24 24">${contenido}</svg>`
+    : null;
+}
+
+/** Icono de categoría para grillas y listas: icono propio por id (categorías
+ *  nuevas); si no, el mapeado de su emoji (semillas); si no, el emoji tal cual
+ *  (categorías viejas personalizadas). */
+export function IconoCat({ icono, emoji }) {
+  const porId = icono && ICONOS_CATEGORIA[icono];
+  if (porId) return html`<svg class="icono-categoria" ...${trazo} viewBox="0 0 24 24">${porId}</svg>`;
   const contenido = CONTENIDO_CATEGORIA_PROPIA[emoji];
   return contenido
     ? html`<svg class="icono-categoria" ...${trazo} viewBox="0 0 24 24">${contenido}</svg>`

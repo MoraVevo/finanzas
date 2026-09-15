@@ -144,6 +144,7 @@ export function statsRango(desde, hasta, txs, { cuentas = [], categorias, tasas,
     id, monto,
     nombre: id === '_sin' ? 'Sin categoría' : id === '_tercero' ? 'De terceros' : (catPorId.get(id)?.nombre || id),
     emoji: id === '_sin' ? '❓' : id === '_tercero' ? '🤝' : (catPorId.get(id)?.emoji || '🏷️'),
+    icono: id === '_sin' || id === '_tercero' ? null : (catPorId.get(id)?.icono || null),
   })).sort((a, b) => b.monto - a.monto);
   return {
     gasto, ingreso, transferencias, aTerceros, deTerceros,
