@@ -462,6 +462,67 @@ export function fechasFijo(regla, desdeD, hastaD) {
   return out;
 }
 
+/** Como fechasFijo pero INCLUYE ocurrencias pasadas (sin el corte de "solo
+ *  futuras"): para saber qué fijos ya llegaron y faltan materializar. */
+export function ocurrenciasFijo(regla, desdeD, hastaD) {
+  const out = [];
+  if (regla.frecuencia === 'semanal') {
+    let cur = new Date(desdeD + 'T12:00');
+    for (let i = 0; i < 7 && cur.getDay() !== (regla.dia ?? 1); i++) cur.setDate(cur.getDate() + 1);
+    const fin = new Date(hastaD + 'T12:00');
+    for (; cur <= fin; cur.setDate(cur.getDate() + 7)) {
+      const iso = isoDia(cur);
+      if (iso >= desdeD && iso <= hastaD) out.push(iso);
+    }
+    return out;
+  }
+  let y = +desdeD.slice(0, 4), m = +desdeD.slice(5, 7) - 1;
+  const fy = +hastaD.slice(0, 4), fm = +hastaD.slice(5, 7) - 1;
+  for (; y < fy || (y === fy && m <= fm); m++, m > 11 ? (m = 0, y++) : 0) {
+    const dias = regla.frecuencia === 'quincenal' ? [15, diasDelMes(y, m)] : [Math.min(regla.dia || 1, diasDelMes(y, m))];
+    for (const d of dias) {
+      const iso = `${y}-${p2g(m + 1)}-${p2g(d)}`;
+      if (iso >= desdeD && iso <= hastaD) out.push(iso);
+    }
+  }
+  return out;
+}
+
+/** ¿Existe ya una transacción de este fijo? Por marca (fijoId) o por
+ *  equivalencia: mismo día, misma cuenta, moneda y monto dentro de ±1%. */
+export function txEquivale(t, fijo, fechaISO) {
+  if (!t || t.eliminada || t.tipo !== 'ingreso') return false;
+  if (t.fecha.slice(0, 10) !== fechaISO || t.cuenta !== fijo.cuenta) return false;
+  if (t.fijoId === fijo.id) return true;
+  const tol = Math.max(100, Math.round(fijo.monto * 0.01));
+  return t.moneda === fijo.moneda && Math.abs(t.monto - fijo.monto) <= tol;
+}
+
+/** Fijos de INGRESO con cuenta destino cuya ocurrencia ya llegó y todavía no
+ *  existe como transacción (ni materializada ni registrada a mano). Devuelve
+ *  [{ fijo, fecha }] listo para crear. Puro. */
+export function fijosPendientes({ fijos = [], txs = [], hoyD = isoDia() }) {
+  const porDia = new Map();
+  for (const t of txs) {
+    if (t.eliminada || t.tipo !== 'ingreso') continue;
+    const d = t.fecha.slice(0, 10);
+    if (!porDia.has(d)) porDia.set(d, []);
+    porDia.get(d).push(t);
+  }
+  const sumarDia = (iso, n) => isoDia(new Date(Date.parse(iso + 'T12:00') + n * 86400000));
+  const out = [];
+  for (const f of fijos.filter(r => r.activa !== false && r.tipo === 'ingreso' && r.cuenta)) {
+    const creado = (f.creadoEn || '').slice(0, 10);
+    let desde = creado;
+    if (f.materializadoHasta && sumarDia(f.materializadoHasta, 1) > desde) desde = sumarDia(f.materializadoHasta, 1);
+    if (!desde || desde > hoyD) continue;
+    for (const fecha of ocurrenciasFijo(f, desde, hoyD)) {
+      if (!(porDia.get(fecha) || []).some(t => txEquivale(t, f, fecha))) out.push({ fijo: f, fecha });
+    }
+  }
+  return out;
+}
+
 /* ============ Cuotas: planes de pago finitos (compra financiada, préstamo) ============ */
 
 const fechaCuotaPlan = (plan, k) => {
@@ -621,6 +682,9 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], c
   const fuentePasiva = id => { const c = cuentaDe(id); return !!c && (c.tipo === 'tarjeta' || c.tipo === 'deuda'); };
 
   const eventos = [];
+  // ingreso fijo de HOY que ya existe como transacción (materializado o a
+  // mano): no se vuelve a proyectar — ya está en el saldo base
+  const ingresosHoy = txs.filter(t => !t.eliminada && t.tipo === 'ingreso' && t.fecha.slice(0, 10) === hoyD);
   for (const r of fijos.filter(r => r.activa !== false)) {
     const montoP = convertir(r.monto, r.moneda, principal, tasas, hoyD);
     if (r.tipo === 'gasto' && r.fuente && fuentePasiva(r.fuente)) {
@@ -629,7 +693,9 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], c
           nombre: r.nombre || 'Gasto fijo', montoP, moneda: principal });
       }
     } else {
+      const yaLlego = r.tipo === 'ingreso' && r.cuenta && ingresosHoy.some(t => txEquivale(t, r, hoyD));
       for (const fecha of fechasFijo(r, hoyD, finD)) {
+        if (fecha === hoyD && yaLlego) continue;
         eventos.push({
           fecha, tipo: r.tipo, fijoId: r.id,
           nombre: r.nombre || (r.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo'),

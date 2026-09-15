@@ -1,7 +1,9 @@
 // Punto de entrada: arranque, enrutado por hash, barra de pestañas, botón + y toast.
 import { html, render, useEffect, Component } from '../vendor/preact-standalone.module.js';
 import fin from './db.js';
-import { useStore, recargar, nav } from './store.js';
+import { useStore, recargar, nav, getState } from './store.js';
+import { fijosPendientes } from './model.js';
+import { uid, isoDia } from './util.js';
 import { ICONOS_TAB } from './iconos.js';
 import Onboarding from './screens/onboarding.js';
 import Hoy from './screens/hoy.js';
@@ -36,6 +38,31 @@ class Guarda extends Component {
 (async () => {
   await fin.inicial();
   await recargar();
+  // Fijos de ingreso con cuenta destino: el día que llegan se vuelven
+  // transacción real en esa cuenta (a las 08:00) — dinero en el saldo, no
+  // solo en las proyecciones. Si ya lo registraste a mano, no se duplica.
+  const S0 = getState();
+  if (S0.ajustes?.iniciado && (S0.fijos || []).some(f => f.activa !== false && f.tipo === 'ingreso' && f.cuenta)) {
+    const hoy = isoDia();
+    const pend = fijosPendientes({ fijos: S0.fijos, txs: await fin.todasTx(), hoyD: hoy });
+    for (const { fijo, fecha } of pend) {
+      await fin.guardarTx({
+        id: uid(), tipo: 'ingreso', monto: fijo.monto, moneda: fijo.moneda,
+        cuenta: fijo.cuenta, cuentaDestino: null, categoria: null, etiquetas: [],
+        motivo: fijo.nombre || 'Ingreso fijo', fijoId: fijo.id,
+        fecha: fecha + 'T08:00', adjuntos: [], eliminada: false,
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      });
+    }
+    // ventana procesada (aunque no hubiera nada pendiente): una ocurrencia
+    // borrada a mano no vuelve a crearse
+    for (const f of S0.fijos) {
+      if (f.activa !== false && f.tipo === 'ingreso' && f.cuenta && f.materializadoHasta !== hoy) {
+        await fin.guardarFijo({ ...f, materializadoHasta: hoy });
+      }
+    }
+    if (pend.length) await recargar();
+  }
   if (!location.hash) location.hash = '#/';
   render(html`<${App} />`, document.getElementById('app'));
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

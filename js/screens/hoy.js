@@ -348,7 +348,7 @@ function PanelFijos({ S, cerrar }) {
       return html`<div key=${f.id} class="fila" onClick=${() => setEdit(f)}>
         <div class="cuerpo">
           <div class="titulo">${f.nombre || (f.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo')}</div>
-          <div class="sub">${FRECV[f.frecuencia] || f.frecuencia}${f.frecuencia !== 'quincenal' ? ' · día ' + f.dia : ''} · ${f.moneda}${fu ? html` · <${IconoCuenta} tipo=${fu.tipo} /> ${fu.nombre}` : ''}${f.activa === false ? ' · inactivo' : ''}</div>
+          <div class="sub">${FRECV[f.frecuencia] || f.frecuencia}${f.frecuencia !== 'quincenal' ? ' · día ' + f.dia : ''} · ${f.moneda}${fu ? html` · <${IconoCuenta} tipo=${fu.tipo} /> ${fu.nombre}` : ''}${f.tipo === 'ingreso' && f.cuenta && html` · entra en ${S.cuentas.find(c => c.id === f.cuenta)?.nombre || '?'}`}${f.activa === false ? ' · inactivo' : ''}</div>
         </div>
         <div class="monto num ${f.tipo === 'ingreso' ? 'm-ingreso' : 'm-gasto'}">${f.tipo === 'ingreso' ? '+' : '−'}${fmtConMoneda(f.monto, f.moneda)}</div>
       </div>`;
@@ -365,22 +365,27 @@ function EditorFijo({ f, S, cerrar }) {
     nombre: f.nombre || '', tipo: f.tipo || 'gasto',
     monto: f.monto ? enteroATexto(f.monto, 2) : '', moneda: f.moneda || S.ajustes.monedaPrincipal,
     frecuencia: f.frecuencia || 'mensual', dia: f.dia || 15, activa: f.activa !== false,
-    fuente: f.fuente || null
+    fuente: f.fuente || null, cuenta: f.cuenta || null
   });
   const set = p => setD({ ...d, ...p });
   const DIAS_SEM = [['0', 'D'], ['1', 'L'], ['2', 'M'], ['3', 'X'], ['4', 'J'], ['5', 'V'], ['6', 'S']];
   const fuenteObj = S.cuentas.find(c => c.id === d.fuente);
   const fuentePasiva = fuenteObj && (fuenteObj.tipo === 'tarjeta' || fuenteObj.tipo === 'deuda');
+  const debitos = S.cuentas.filter(c => cuentaEnPatrimonio(c) && c.tipo !== 'tarjeta' && c.tipo !== 'deuda');
+  const cuentaDest = S.cuentas.find(c => c.id === d.cuenta);
 
   const guardar = async () => {
     const monto = textoAEntero(d.monto || '0', 2);
     if (!monto) { toast('Escribe el monto'); return; }
+    if (d.tipo === 'ingreso' && !d.cuenta) { toast('Elige la cuenta donde entra tu ingreso'); return; }
     let dia = parseInt(d.dia, 10);
     if (d.frecuencia === 'semanal') { if (!(dia >= 0 && dia <= 6)) { toast('Elige el día de la semana'); return; } }
     else { if (!(dia >= 1 && dia <= 31)) { toast('Día inválido (1-31)'); return; } }
     await fin.guardarFijo({
       id: f.id || uid(), nombre: d.nombre.trim() || null, tipo: d.tipo, monto, moneda: d.moneda,
-      frecuencia: d.frecuencia, dia, activa: d.activa, fuente: d.fuente || null,
+      frecuencia: d.frecuencia, dia, activa: d.activa,
+      fuente: d.tipo === 'gasto' ? (d.fuente || null) : null,
+      cuenta: d.tipo === 'ingreso' ? d.cuenta : null,
       creadoEn: f.creadoEn || new Date().toISOString()
     });
     await recargar();
@@ -408,6 +413,18 @@ function EditorFijo({ f, S, cerrar }) {
             onClick=${() => set({ moneda: m })}>${m}</button>`)}
         <//>
       <//>
+      ${d.tipo === 'ingreso' && html`<div>
+        <div class="dato-cuenta">¿A qué cuenta entra?</div>
+        <div class="chips-scroll" style=${{ marginTop: '6px' }}>
+          ${debitos.map(c => html`<button key=${c.id}
+            class=${'chip' + (d.cuenta === c.id ? ' sel' : '')}
+            onClick=${() => set({ cuenta: c.id })}><${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}</button>`)}
+        <//>
+        ${cuentaDest && html`<div class="dato-cuenta" style=${{ marginTop: '4px' }}>
+          El día que llega, el ingreso se registra solo en ${cuentaDest.nombre} — ya no lo anotas tú.
+        <//>`}
+        ${debitos.length === 0 && html`<div class="dato-cuenta">Crea una cuenta de débito en la pestaña Cuentas.</div>`}
+      <//>`}
       ${d.tipo === 'gasto' && html`<div>
         <div class="dato-cuenta">¿Con qué se paga? (opcional)</div>
         <div class="chips-scroll" style=${{ marginTop: '6px' }}>
