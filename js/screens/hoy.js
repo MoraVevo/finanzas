@@ -46,15 +46,36 @@ export default function Hoy() {
   const liquido = suma(debito);
   const debeTarjetas = -suma(tarjetas);
   const debePrestamos = -suma(prestamos);
-  // horizonte: hasta el próximo ingreso fijo (si hay salario registrado) o 15 días
+  // Horizonte y efectividad de los fijos. El fijo del día se considera efectivo
+  // desde la mañana: un ingreso que ocurre hoy ya suma al disponible (salvo que
+  // ya esté registrado como movimiento real, para no duplicarlo), y la ventana
+  // corre hasta el SIGUIENTE pago. Un gasto fijo de hoy sigue pendiente salvo
+  // que ya exista un movimiento equivalente registrado hoy.
   const hoyD = isoDia();
+  const mananaD = isoDia(new Date(Date.parse(hoyD + 'T12:00') + 86400000));
   const en60 = isoDia(new Date(Date.parse(hoyD + 'T12:00') + 60 * 86400000));
-  const proximoPago = fijosActivos.filter(f => f.tipo === 'ingreso')
-    .map(r => fechasFijo(r, hoyD, en60)[0]).filter(Boolean).sort()[0] || null;
+  const ingresos = fijosActivos.filter(f => f.tipo === 'ingreso');
+  const montoP = (monto, moneda) => convertir(monto, moneda, principal, S.tasas, hoyD);
+  const cubiertoHoy = (tipo, mp) => {
+    const tol = Math.max(100, Math.round(mp * 0.01));
+    return txs.some(t => t.tipo === tipo && t.fecha.slice(0, 10) === hoyD
+      && Math.abs(montoP(t.monto, t.moneda) - mp) <= tol);
+  };
+  // ingresos fijos que ocurren hoy y aún no están registrados
+  const lleganHoy = ingresos.filter(r => fechasFijo(r, hoyD, hoyD).includes(hoyD))
+    .map(r => ({ nombre: r.nombre || 'Ingreso fijo', montoP: montoP(r.monto, r.moneda) }))
+    .filter(r => !cubiertoHoy('ingreso', r.montoP));
+  const efectivoHoy = lleganHoy.reduce((s, r) => s + r.montoP, 0);
+  const liquidoHoy = liquido + efectivoHoy;
+  // próximo ingreso ESTRICTAMENTE después de hoy (el de hoy ya está en el número)
+  const proximoPago = ingresos.map(r => fechasFijo(r, mananaD, en60)[0])
+    .filter(Boolean).sort()[0] || null;
   const hastaD = proximoPago || isoDia(new Date(Date.parse(hoyD + 'T12:00') + 15 * 86400000));
-  const porPagar = pa.rows.filter(r => r.tipo === 'gasto' && r.fecha <= hastaD)
+  const porPagar = pa.rows
+    .filter(r => r.tipo === 'gasto' && r.fecha >= hoyD && r.fecha <= hastaD)
+    .filter(r => r.fecha !== hoyD || !cubiertoHoy('gasto', r.montoP))
     .reduce((s, r) => s + r.montoP, 0);
-  const trasPagos = liquido - porPagar;
+  const trasPagos = liquidoHoy - porPagar;
 
   // agrupar recientes por día
   const grupos = [];
@@ -75,7 +96,10 @@ export default function Hoy() {
 
     <div class="tarjeta" style=${{ textAlign: 'center', padding: '20px 16px' }}>
       <div style=${{ fontSize: '12.5px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Dinero disponible</div>
-      <div class="num" style=${{ fontSize: '34px', fontWeight: 800, margin: '4px 0 2px' }}>${fmtConMoneda(liquido, principal)}</div>
+      <div class="num" style=${{ fontSize: '34px', fontWeight: 800, margin: '4px 0 2px' }}>${fmtConMoneda(liquidoHoy, principal)}</div>
+      ${efectivoHoy > 0 && html`<div style=${{ fontSize: '12.5px', color: 'var(--ingreso)', fontWeight: 700 }}>
+        + ${fmtConMoneda(efectivoHoy, principal)} de hoy (${lleganHoy.map(r => r.nombre).join(', ')})
+      </div>`}
       ${debito.length > 1 && html`<div style=${{ fontSize: '12.5px', color: 'var(--muted)' }}>en ${debito.length} cuentas de débito</div>`}
       <div style=${{ margin: '12px 0 0', fontSize: '13px', lineHeight: 1.55 }}>
         ${porPagar > 0 ? html`
@@ -107,12 +131,12 @@ export default function Hoy() {
       <h3>${fmtMesLargo(clave)} · en ${principal}</h3>
       <div style=${{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', textAlign: 'center' }}>
         <div>
-          <div style=${{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>Gastado</div>
-          <div class="num m-gasto" style=${{ fontSize: '19px', fontWeight: 800 }}>${fmtConMoneda(stats.gasto, principal)}</div>
+          <div style=${{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>Ingresos</div>
+          <div class="num m-ingreso" style=${{ fontSize: '19px', fontWeight: 800 }}>${fmtConMoneda(stats.ingreso, principal)}</div>
         </div>
         <div>
-          <div style=${{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>Ingresado</div>
-          <div class="num m-ingreso" style=${{ fontSize: '19px', fontWeight: 800 }}>${fmtConMoneda(stats.ingreso, principal)}</div>
+          <div style=${{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>Egresos</div>
+          <div class="num m-gasto" style=${{ fontSize: '19px', fontWeight: 800 }}>${fmtConMoneda(stats.gasto + stats.aTerceros, principal)}</div>
         </div>
         <div>
           <div style=${{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>Neto</div>

@@ -2,7 +2,7 @@
 // Estrategia: red-primero para HTML/JS (evita servir mezclas de versiones al
 // actualizar) con respaldo en caché si no hay red; caché-primero para lo demás.
 // Al desplegar cambios, bump de CACHE para limpiar entradas viejas.
-const CACHE = 'finanzas-v67';
+const CACHE = 'finanzas-v69';
 const NUCLEO = [
   './',
   './index.html',
