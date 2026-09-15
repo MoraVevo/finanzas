@@ -214,6 +214,11 @@ const tazaCafe = html`<path d="M5 9.5h11V15a4.5 4.5 0 0 1-4.5 4.5h-2A4.5 4.5 0 0
 const coche = html`<path d="M5 16.2 6.2 11a2 2 0 0 1 1.9-1.4h7.8a2 2 0 0 1 1.9 1.4l1.2 5.2" />
   <path d="M3.8 16.2h16.4v2.5a.9.9 0 0 1-.9.9h-1.5a.9.9 0 0 1-.9-.9v-.7H7.1v.7a.9.9 0 0 1-.9.9H4.7a.9.9 0 0 1-.9-.9Z" />`;
 
+const cocheFrontal = html`<path d="M6.4 12 7.6 7.9a2.2 2.2 0 0 1 2.1-1.6h4.6a2.2 2.2 0 0 1 2.1 1.6L17.6 12" />
+  <rect x="4.2" y="12" width="15.6" height="4.6" rx="2" />
+  <path d="M7.3 14.8v.01M16.7 14.8v.01" stroke-width="2.4" />
+  <path d="M10.4 14.8h3.2" />`;
+
 const gasolina = html`<path d="M6 21V5a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v16" />
   <path d="M4.5 21h12" />
   <path d="M8.5 6.5h4v3h-4Z" />
@@ -249,8 +254,11 @@ const recibo = html`<path d="M6 3.5h12v16.2l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4
 const escudo = html`<path d="M12 3.5 19.5 6v6c0 4.8-3.2 7.7-7.5 9-4.3-1.3-7.5-4.2-7.5-9V6Z" />
   <path d="M9 12l2.2 2.2L15.5 10" />`;
 
-const mancuerna = html`<path d="M7.5 7.5v9M4.5 9.2v5.6M16.5 7.5v9M19.5 9.2v5.6" />
-  <path d="M7.5 12h9" />`;
+const mancuerna = html`<path d="M9.2 12h5.6" />
+  <path d="M6.9 8.9v6.2M4.4 7.2v9.6M17.1 8.9v6.2M19.6 7.2v9.6" />`;
+
+const ticket = html`<path d="M3.5 9a2.5 2.5 0 0 1 0 6v1.4a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2V15a2.5 2.5 0 0 1 0-6V7.6a2 2 0 0 0-2-2h-13a2 2 0 0 0-2 2Z" />
+  <path d="M14.4 5.6v2.2M14.4 10.9v2.2M14.4 16.2v2.2" />`;
 
 const tijeras = html`<circle cx="5.8" cy="6.3" r="2.4" />
   <circle cx="5.8" cy="17.7" r="2.4" />
@@ -277,7 +285,8 @@ const parqueo = html`<rect x="4" y="4" width="16" height="16" rx="3.5" />
 
 const CONTENIDO_CATEGORIA_PROPIA = {
   '🍔': hamburguesa, '🛒': carrito, '🍽️': cubiertos, '☕': tazaCafe,
-  '🚗': coche, '⛽': gasolina, '🛠️': llave,
+  '🚗': coche,
+  '🚙': cocheFrontal, '⛽': gasolina, '🛠️': llave,
   '🏠': CONTENIDO_CATEGORIA.hogar,
   '💡': CONTENIDO_CATEGORIA.servicios,
   '📱': telefono,
@@ -308,6 +317,7 @@ const CONTENIDO_CATEGORIA_PROPIA = {
   '📶': wifi,
   '🅿️': parqueo,
   '🅿': parqueo,
+  '🎫': ticket,
 };
 
 /** Versión exportada para pruebas: emojis de categorías con icono propio. */
