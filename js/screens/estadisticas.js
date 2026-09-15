@@ -284,7 +284,7 @@ function VistaRango({ S, todo }) {
   const txs = cuentaScope
     ? todo.filter(t => t.cuenta === cuentaScope || t.cuentaDestino === cuentaScope)
     : todo;
-  const st = statsRango(desde, hasta, txs, S);
+  const st = statsRango(desde, hasta, txs, S, todo);
   const est = estructuraRango(desde, hasta, txs, S);
   const tend = tendencia(txs, S, 12);
   const p = patrimonio(S.cuentas, todo, S.tasas, principal);
@@ -298,7 +298,7 @@ function VistaRango({ S, todo }) {
   const diaHoy = isoDia();
   const desde3 = isoDia(new Date(hoyMS - 89 * 86400000)) + 'T00:00';
   const hasta3 = isoDia(new Date(hoyMS + 86400000)) + 'T00:00';
-  const st3 = statsRango(desde3, hasta3, txs, S);
+  const st3 = statsRango(desde3, hasta3, txs, S, todo);
   const ahorro3 = st3.neto; // ingreso − gasto − salidas a terceros (90 días)
   // alcance pasivo (tarjeta/deuda): la ficha cambia — deudas y pagos, no ingresos
   const cuentaObj = cuentaScope ? S.cuentas.find(c => c.id === cuentaScope) : null;
@@ -387,13 +387,15 @@ function VistaRango({ S, todo }) {
     </div>` : html`
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
-      <div class="stat-box"><div class="etq">Ingreso</div><div class="val m-ingreso">${fmtFicha(st.ingreso)}</div></div>
+      <div class="stat-box"><div class="etq">Ingreso</div><div class="val m-ingreso">${fmtFicha(st.ingreso)}</div>
+        ${st.deTerceros > 0 && html`<div class="etq" style=${{ marginTop: '2px' }}>incluye ${fmtFicha(st.deTerceros)} de terceros</div>`}</div>
       <div class="stat-box"><div class="etq">Neto</div><div class="val" style=${{ color: st.neto >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${st.neto >= 0 ? '+' : '−'}${fmtFicha(Math.abs(st.neto))}</div></div>
     </div>
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">${ahorro3 >= 0 ? 'Ahorro' : 'Desahorro'}</div>
         <div class="val" style=${{ color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : '−'}${fmtFicha(Math.abs(ahorro3))}</div>
-        ${st3.aTerceros > 0 && html`<div class="etq" style=${{ marginTop: '2px' }}>sin ${fmtFicha(st3.aTerceros)} a terceros</div>`}</div>
+        ${st3.aTerceros > 0 && html`<div class="etq" style=${{ marginTop: '2px' }}>sin ${fmtFicha(st3.aTerceros)} a terceros</div>`}
+        ${st3.aTerceros < 0 && html`<div class="etq" style=${{ marginTop: '2px' }}>con ${fmtFicha(-st3.aTerceros)} devueltos</div>`}</div>
       <div class="stat-box"><div class="etq">Gasto / día</div>
         <div class="val">${fmtFicha(Math.round(promDia))}</div></div>
       <div class="stat-box"><div class="etq">Mayor gasto</div>

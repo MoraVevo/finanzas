@@ -30,7 +30,8 @@ export default function Hoy() {
   const p = patrimonio(S.cuentas, txs, S.tasas, principal);
   const clave = claveMesActual();
   const [desde, hasta] = rangoMes(clave);
-  const stats = statsMes(clave, txs.filter(t => t.fecha >= desde && t.fecha < hasta), S);
+  // historial completo: el neto con terceros necesita su saldo previo al mes
+  const stats = statsMes(clave, txs, S);
   const presupuestoTotal = S.presupuestos.reduce((s, pr) => s + pr.monto, 0);
   const pct = presupuestoTotal ? Math.min(100, stats.gasto / presupuestoTotal * 100) : 0;
   const excedido = presupuestoTotal && stats.gasto > presupuestoTotal;

@@ -79,39 +79,74 @@ export function patrimonio(cuentas, txs, tasas, principal) {
 }
 
 /** Estadísticas de un rango [desde, hasta) en ISO local. Las transferencias
- *  quedan fuera de gasto/ingreso — salvo las dirigidas a cuentas de terceros,
- *  que sí restan del neto: ese dinero no es tuyo. Acepta el store completo (S). */
-export function statsRango(desde, hasta, txs, { cuentas = [], categorias, tasas, ajustes, principal }) {
+ *  quedan fuera de gasto/ingreso, salvo el trato con cuentas de terceros: lo
+ *  depositado resta del neto (aTerceros), lo devuelto lo repone, y lo que el
+ *  tercero te pasa POR ENCIMA de su saldo es ingreso nuevo (deTerceros).
+ *  Para saber ese saldo se recorre TODO el historial (`todas`; por defecto
+ *  `txs`) en orden cronológico — los contadores solo suman lo en rango.
+ *  Acepta el store completo en S. */
+export function statsRango(desde, hasta, txs, { cuentas = [], categorias, tasas, ajustes, principal }, todas = null) {
   principal = principal || ajustes?.monedaPrincipal || 'GTQ';
-  const enRango = txs.filter(t => t.fecha >= desde && t.fecha < hasta);
   const catPorId = new Map(categorias.map(c => [c.id, c]));
-  const terceros = new Set(cuentas.filter(c => c.tipo === 'tercero').map(c => c.id));
+  // saldo de cada tercero en su propia moneda, caminando el historial
+  const saldoTercero = new Map(cuentas.filter(c => c.tipo === 'tercero').map(c => [c.id, c.saldoInicial || 0]));
   const porCategoria = new Map(), porCategoriaIngreso = new Map(), porEtiqueta = new Map(), porDia = new Map();
-  let gasto = 0, ingreso = 0, transferencias = 0, aTerceros = 0;
-  for (const tx of enRango) {
+  const enConjunto = todas ? new Set(txs.map(t => t.id)) : null;
+  const cuenta_ = t => (!enConjunto || enConjunto.has(t.id)) && t.fecha >= desde && t.fecha < hasta;
+  let gasto = 0, ingreso = 0, transferencias = 0, aTerceros = 0, deTerceros = 0;
+  const orden = [...(todas || txs)].sort((a, b) => a.fecha.localeCompare(b.fecha));
+  for (const tx of orden) {
     const montoP = convertir(tx.monto, tx.moneda, principal, tasas, tx.fecha);
     if (tx.tipo === 'gasto') {
-      gasto += montoP;
-      const cid = tx.categoria || '_sin';
-      porCategoria.set(cid, (porCategoria.get(cid) || 0) + montoP);
-      porDia.set(tx.fecha.slice(0, 10), (porDia.get(tx.fecha.slice(0, 10)) || 0) + montoP);
-      for (const e of tx.etiquetas || []) porEtiqueta.set(e, (porEtiqueta.get(e) || 0) + montoP);
+      if (cuenta_(tx)) {
+        gasto += montoP;
+        const cid = tx.categoria || '_sin';
+        porCategoria.set(cid, (porCategoria.get(cid) || 0) + montoP);
+        porDia.set(tx.fecha.slice(0, 10), (porDia.get(tx.fecha.slice(0, 10)) || 0) + montoP);
+        for (const e of tx.etiquetas || []) porEtiqueta.set(e, (porEtiqueta.get(e) || 0) + montoP);
+      }
     } else if (tx.tipo === 'ingreso') {
-      ingreso += montoP;
-      const cid = tx.categoria || '_sin';
-      porCategoriaIngreso.set(cid, (porCategoriaIngreso.get(cid) || 0) + montoP);
+      if (cuenta_(tx)) {
+        ingreso += montoP;
+        const cid = tx.categoria || '_sin';
+        porCategoriaIngreso.set(cid, (porCategoriaIngreso.get(cid) || 0) + montoP);
+      }
     } else {
-      transferencias += montoP;
-      if (terceros.has(tx.cuentaDestino) && !terceros.has(tx.cuenta)) aTerceros += montoP;
+      const deT = saldoTercero.has(tx.cuenta), aT = saldoTercero.has(tx.cuentaDestino);
+      if (aT && !deT) {
+        if (cuenta_(tx)) aTerceros += montoP;
+        saldoTercero.set(tx.cuentaDestino, saldoTercero.get(tx.cuentaDestino) + (tx.montoDestino ?? tx.monto));
+      } else if (deT && !aT) {
+        const saldo = saldoTercero.get(tx.cuenta);
+        // devolución: hasta su saldo es tu dinero volviendo (repone aTerceros);
+        // el excedente es ganancia: ingreso nuevo
+        const neutro = Math.max(0, Math.min(tx.monto, saldo));
+        if (cuenta_(tx)) {
+          const neutroP = convertir(neutro, tx.moneda, principal, tasas, tx.fecha);
+          aTerceros -= neutroP;
+          const gananciaP = montoP - neutroP;
+          if (gananciaP > 0) {
+            deTerceros += gananciaP;
+            ingreso += gananciaP;
+            porCategoriaIngreso.set('_tercero', (porCategoriaIngreso.get('_tercero') || 0) + gananciaP);
+          }
+        }
+        saldoTercero.set(tx.cuenta, saldo - tx.monto);
+      } else if (deT && aT) {
+        saldoTercero.set(tx.cuentaDestino, saldoTercero.get(tx.cuentaDestino) + (tx.montoDestino ?? tx.monto));
+        saldoTercero.set(tx.cuenta, saldoTercero.get(tx.cuenta) - tx.monto);
+      } else if (cuenta_(tx)) {
+        transferencias += montoP;
+      }
     }
   }
   const aLista = m => [...m.entries()].map(([id, monto]) => ({
     id, monto,
-    nombre: id === '_sin' ? 'Sin categoría' : (catPorId.get(id)?.nombre || id),
-    emoji: id === '_sin' ? '❓' : (catPorId.get(id)?.emoji || '🏷️'),
+    nombre: id === '_sin' ? 'Sin categoría' : id === '_tercero' ? 'De terceros' : (catPorId.get(id)?.nombre || id),
+    emoji: id === '_sin' ? '❓' : id === '_tercero' ? '🤝' : (catPorId.get(id)?.emoji || '🏷️'),
   })).sort((a, b) => b.monto - a.monto);
   return {
-    gasto, ingreso, transferencias, aTerceros,
+    gasto, ingreso, transferencias, aTerceros, deTerceros,
     neto: ingreso - gasto - aTerceros,
     porCategoria: aLista(porCategoria), porCategoriaIngreso: aLista(porCategoriaIngreso),
     porEtiqueta: aLista(porEtiqueta),

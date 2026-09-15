@@ -328,6 +328,24 @@ input[type="datetime-local"], input[type="date"] {
 .barra-fila .pista { height: 8px; border-radius: 5px; background: var(--chip); overflow: hidden; }
 .barra-fila .lleno { height: 100%; border-radius: 5px; background: var(--accent); }
 
+/* Gráficas del detalle de una cuenta bancaria */
+.cuenta-graficas { overflow: hidden; }
+.cuenta-chart { min-width: 0; }
+.cuenta-chart-titulo {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 2px; font-size: 12.5px; font-weight: 700;
+}
+.cuenta-chart-titulo > b { color: var(--accent); }
+.cuenta-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.cuenta-chart svg text { font-family: var(--font); font-size: 8.5px; }
+.cuenta-chart-separador { height: 1px; background: var(--line); margin: 12px 0; }
+.cuenta-chart-leyenda { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10.5px; font-weight: 600; }
+.cuenta-chart-leyenda i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.cuenta-chart-leyenda i.entra { background: var(--ingreso); }
+.cuenta-chart-leyenda i.sale { background: var(--gasto); margin-left: 3px; }
+.cuenta-chart-totales { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; color: var(--muted); }
+.cuenta-chart-totales b { margin-left: 3px; }
+
 /* Gráfica de flujo interactiva: 1 dedo desplaza (vertical = scroll de página), pellizco = zoom */
 .flujo-chart { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: grab; }
 .flujo-chart:active { cursor: grabbing; }
