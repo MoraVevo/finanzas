@@ -8,7 +8,7 @@ import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
 import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
-import { IconoCuenta, IconoCategoria, ICONO_ETIQUETA, ICONO_TRANSFER, ICONO_TARJETA } from '../iconos.js';
+import { IconoCuenta, IconoCategoria, IconoCat, ICONO_ETIQUETA, ICONO_TRANSFER, ICONO_TARJETA } from '../iconos.js';
 import ActividadBancaria from '../actividad-bancaria.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
@@ -425,7 +425,7 @@ function VistaRango({ S, todo }) {
       <h3>Por categoría</h3>
       ${st.porCategoria.slice(0, 12).map(c => html`<div key=${c.id} class="barra-fila">
         <div class="info">
-          <span>${c.emoji} ${c.nombre}${presup.get(c.id) ? html` <span class="etiqueta-mini">presup.</span>` : ''}</span>
+          <span><${IconoCat} emoji=${c.emoji} /> ${c.nombre}${presup.get(c.id) ? html` <span class="etiqueta-mini">presup.</span>` : ''}</span>
           <span class="num">${fmtConMoneda(c.monto, principal)} · ${Math.round(c.monto / st.gasto * 100)}%</span>
         </div>
         <div class="pista"><div class="lleno" style=${{ width: (c.monto / maxCat * 100) + '%' }}></div></div>
@@ -439,7 +439,7 @@ function VistaRango({ S, todo }) {
     ${st.porCategoriaIngreso.length > 0 && html`<div class="tarjeta">
       <h3>Ingresos por categoría</h3>
       ${st.porCategoriaIngreso.map(c => html`<div key=${c.id} class="barra-fila">
-        <div class="info"><span>${c.emoji} ${c.nombre}</span><span class="num">${fmtConMoneda(c.monto, principal)}</span></div>
+        <div class="info"><span><${IconoCat} emoji=${c.emoji} /> ${c.nombre}</span><span class="num">${fmtConMoneda(c.monto, principal)}</span></div>
         <div class="pista"><div class="lleno" style=${{ width: (c.monto / st.porCategoriaIngreso[0].monto * 100) + '%', background: 'var(--ingreso)' }}></div></div>
       </div>`)}
     <//>`}

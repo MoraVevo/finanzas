@@ -4,7 +4,7 @@ import fin from '../db.js';
 import { useStore, nav } from '../store.js';
 import { FilaTx, PickerCuentas, Sheet } from '../ui.js';
 import { convertir } from '../model.js';
-import { ICONO_ENTRA, ICONO_SALE, ICONO_TRANSFER, ICONO_ETIQUETA } from '../iconos.js';
+import { ICONO_ENTRA, ICONO_SALE, ICONO_TRANSFER, ICONO_ETIQUETA, IconoCat } from '../iconos.js';
 import { fmtConMoneda, fmtFecha, claveMesActual, sumarMesClave, rangoMes, fmtMesLargo } from '../util.js';
 
 const NOMBRE_TIPO = { gasto: 'Gastos', ingreso: 'Ingresos', transferencia: 'Transferencias' };
@@ -123,7 +123,7 @@ export default function Movimientos() {
 
     ${sheet === 'categoria' && html`<${Sheet} titulo="Filtrar por categoría" onClose=${() => setSheet(null)}>
       ${S.categorias.map(c => html`<div key=${c.id} class="fila" onClick=${() => { setFiltro({ ...filtro, categoria: filtro.categoria === c.id ? null : c.id }); setSheet(null); }}>
-        <span class="emoji">${c.emoji}</span>
+        <span class="emoji"><${IconoCat} emoji=${c.emoji} /></span>
         <div class="cuerpo"><div class="titulo">${c.nombre} <span class="dato-cuenta">(${c.tipo})</span></div></div>
       </div>`)}
     <//>`}

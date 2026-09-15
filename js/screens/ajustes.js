@@ -6,9 +6,9 @@ import { useStore, recargar, toast, nav } from '../store.js';
 import { Sheet, SelectorMoneda, EmojiPicker, Segmentado } from '../ui.js';
 import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.js';
 import { exportarCSV, exportarJSON, importarJSON, copiarParaIA } from '../export.js';
-import { ICONO_ETIQUETA } from '../iconos.js';
+import { ICONO_ETIQUETA, IconoCat } from '../iconos.js';
 
-const VERSION = '1.59';
+const VERSION = '1.61';
 
 export default function Ajustes() {
   const S = useStore();
@@ -117,7 +117,7 @@ function PanelCategorias({ store: S, cerrar }) {
   return html`<${Sheet} titulo="Categorías" onClose=${cerrar}>
     <${Segmentado} opciones=${[['gasto', 'Gastos'], ['ingreso', 'Ingresos']]} valor=${tipo} onChange=${setTipo} />
     ${lista.map(c => html`<div key=${c.id} class="fila" onClick=${() => setEdit(c)}>
-      <span class="emoji">${c.emoji}</span>
+      <span class="emoji"><${IconoCat} emoji=${c.emoji} /></span>
       <div class="cuerpo"><div class="titulo">${c.nombre}</div></div>
       <span style=${{ color: 'var(--muted)' }}>›</span>
     </div>`)}
@@ -187,7 +187,7 @@ function PanelPresupuestos({ store: S, cerrar }) {
       Monto máximo por categoría cada mes, en ${principal}. Déjalo vacío para no presupuestar.
     </div>
     ${gastos.map(c => html`<div key=${c.id} style=${{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-      <span style=${{ fontSize: '19px', width: '26px', textAlign: 'center' }}>${c.emoji}</span>
+      <span style=${{ width: '26px', textAlign: 'center' }}><${IconoCat} emoji=${c.emoji} /></span>
       <span style=${{ flex: 1, fontSize: '14.5px', fontWeight: 600 }}>${c.nombre}</span>
       <input style=${{ width: '110px', textAlign: 'right' }} inputMode="decimal" placeholder="—"
         defaultValue=${presup.get(c.id) ? enteroATexto(presup.get(c.id), 2) : ''}

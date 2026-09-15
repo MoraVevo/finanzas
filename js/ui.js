@@ -1,7 +1,7 @@
 // Componentes compartidos de UI (Preact + htm, sin build).
 import { html, useState, useEffect, useRef } from '../vendor/preact-standalone.module.js';
 import { saldoCuenta } from './model.js';
-import { IconoCuenta, ICONO_TRANSFER, ICONO_TARJETA, ICONO_CAMARA, ICONO_IMAGEN } from './iconos.js';
+import { IconoCuenta, IconoCat, ICONO_TRANSFER, ICONO_TARJETA, ICONO_CAMARA, ICONO_IMAGEN } from './iconos.js';
 import { fmtConMoneda, fmtFecha, fmtHora, isoLocal, isoDia } from './util.js';
 
 /* ---------- Sheet: panel deslizante inferior ----------
@@ -226,7 +226,7 @@ export function FilaTx({ tx, cuentas, categorias, onClick }) {
     cta && tx.tipo !== 'transferencia' ? cta.nombre : null,
     (tx.etiquetas || []).map(e => '#' + e).join(' ') || null].filter(Boolean).join(' · ');
   return html`<div class="fila" onClick=${onClick}>
-    <span class="emoji">${tx.tipo === 'transferencia' ? (esPagoDeuda ? ICONO_TARJETA : ICONO_TRANSFER) : (cat?.emoji || (tx.tipo === 'ingreso' ? '💰' : '📦'))}</span>
+    <span class="emoji">${tx.tipo === 'transferencia' ? (esPagoDeuda ? ICONO_TARJETA : ICONO_TRANSFER) : cat ? html`<${IconoCat} emoji=${cat.emoji} />` : (tx.tipo === 'ingreso' ? '💰' : '📦')}</span>
     <div class="cuerpo">
       <div class="titulo">${titulo}</div>
       <div class="sub">${sub}</div>
@@ -264,7 +264,7 @@ export function PickerCuentas({ titulo = 'Elegir cuenta', cuentas, txs, tasas = 
 export function GridCategorias({ categorias, valor, onPick }) {
   return html`<div class="grid-cats">
     ${categorias.map(c => html`<button key=${c.id} class=${'cat' + (c.id === valor ? ' sel' : '')} onClick=${() => onPick(c.id === valor ? null : c.id)}>
-      <span class="emoji">${c.emoji}</span><span>${c.nombre}</span>
+      <span class="emoji"><${IconoCat} emoji=${c.emoji} /></span><span>${c.nombre}</span>
     </button>`)}
   </div>`;
 }
@@ -347,7 +347,7 @@ export function Comprobantes({ existentes = [], nuevas = [], onQuitarExistente, 
 }
 
 /* ---------- Selector de emoji ---------- */
-const EMOJIS = ('🍔 🍕 🍟 🌮 🍔 🍣 🍜 🍱 🥗 🍿 🍩 ☕ 🍺 🥤 🛒 🍽️ 🚗 🏍️ ⛽ 🛠️ 🧰 🚙 🚌 ✈️ 🚕 🚲 ⛽ 🔧 🏁 🅿️ 🏠 🛋️ 💡 🧻 🧹 🧺 🔌 🚿 📱 💻 🖥️ 🎧 🎮 📺 🎬 🎭 🎫 🎣 ⚽ 🏀 🏋️ 🏊 🏕️ 🎿 👕 👖 👟 🎒 🕶️ 💍 🧴 💊 🩺 🏥 🦷 ❤️ 🧠 📚 ✏️ 🎓 🖊️ 📝 🐶 🐱 🐾 🐦 🌱 🌳 💐 🎁 🎉 🎂 👶 👨 👩 👴 👵 💍 👥 💰 💳 🏦 📈 📉 💵 🧾 📦 🛠️ 🔧 💼 🏆 ⭐ 🔥 🌍 🏖️ 🗺️ 🧳 📷 🔒 🧮 ⏰ ✂️ 🧷').split(' ');
+const EMOJIS = ('🍔 🍕 🍟 🌮 🍔 🍣 🍜 🍱 🥗 🍿 🍩 ☕ 🍺 🥤 🍬 🍭 🛒 🍽️ 🚗 🏍️ ⛽ 🛠️ 🧰 🚙 🚌 ✈️ 🚕 🚲 ⛽ 🔧 🏁 🅿️ 🏠 🛋️ 💡 🧻 🧹 🧺 🔌 🚿 📶 📱 💻 🖥️ 🎧 🎮 📺 🎬 🎭 🎫 🎣 ⚽ 🏀 🏋️ 🏊 🏕️ 🎿 👕 👖 👟 🎒 🕶️ 💍 🧴 💊 🩺 🏥 🦷 ❤️ 🧠 📚 ✏️ 🎓 🖊️ 📝 🔑 🧾 🛡️ 💼 🐶 🐱 🐾 🐦 🌱 🌳 💐 🎁 🎉 🎂 👶 👨 👩 👴 👵 👥 💰 💳 🏦 📈 📉 💵 🧾 📦 🛠️ 🔧 🏆 ⭐ 🔥 🌍 🏖️ 🗺️ 🧳 📷 🔒 🧮 ⏰ ✂️ 🧷').split(' ');
 export function EmojiPicker({ valor, onPick }) {
   return html`<div class="grid-cats" style=${{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
     ${EMOJIS.map((e, i) => html`<button key=${i} class=${'cat' + (e === valor ? ' sel' : '')}

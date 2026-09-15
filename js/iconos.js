@@ -183,13 +183,138 @@ const NOMBRE_A_GRUPO = [
   [/trabajo|oficina|sueldo|negocio/i, 'trabajo'],
 ];
 
-/** Icono de categoría de gasto/ingreso: mapea su emoji (o nombre) a un grupo
- *  con SVG propio; lo no reconocido cae en una etiqueta genérica. */
+/** Icono de categoría: mapea su emoji a un grupo con SVG propio; lo no
+ *  reconocido cae en una etiqueta genérica. */
 export function IconoCategoria({ emoji, nombre }) {
   const grupo = EMOJI_A_GRUPO[emoji]
     || (NOMBRE_A_GRUPO.find(([re]) => re.test(nombre || ''))?.[1])
     || 'tag';
   return html`<svg class="icono-categoria" ...${trazo} viewBox="0 0 24 24">${CONTENIDO_CATEGORIA[grupo]}</svg>`;
+}
+
+/* ---------- Categorías con icono propio ----------
+   Cada categoría semilla tiene su trazo DISTINTO (Café ≠ Comida ≠ Restaurantes)
+   para conservar la distinción al capturar. Las categorías personalizadas del
+   usuario no están en el mapa: muestran su emoji sin conversión. */
+
+const hamburguesa = html`<path d="M5 10.7c0-3.4 3.1-5.7 7-5.7s7 2.3 7 5.7" />
+  <path d="M5 13.9h14" />
+  <path d="M5 16.9h14v.4a2.6 2.6 0 0 1-2.6 2.6H7.6A2.6 2.6 0 0 1 5 17.3Z" />`;
+
+const carrito = html`<path d="M3.5 5h2l2.3 10.6a1.6 1.6 0 0 0 1.6 1.2h7.5a1.6 1.6 0 0 0 1.6-1.2L20.5 8H6.2" />
+  <path d="M10 20v.01M16.5 20v.01" stroke-width="2.4" />`;
+
+const cubiertos = html`<path d="M8 3.5v17M6 3.5v4.2a2 2 0 0 0 4 0V3.5" />
+  <path d="M17 3.5v17M17 3.5c-1.9 1.9-2.6 4.5-1.6 7 .3.8 1 1.2 1.6 1.2" />`;
+
+const tazaCafe = html`<path d="M5 9.5h11V15a4.5 4.5 0 0 1-4.5 4.5h-2A4.5 4.5 0 0 1 5 15Z" />
+  <path d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16" />
+  <path d="M8.7 3.5c-.9 1-.9 2 0 3M12.3 3.5c-.9 1-.9 2 0 3" />`;
+
+const coche = html`<path d="M5 16.2 6.2 11a2 2 0 0 1 1.9-1.4h7.8a2 2 0 0 1 1.9 1.4l1.2 5.2" />
+  <path d="M3.8 16.2h16.4v2.5a.9.9 0 0 1-.9.9h-1.5a.9.9 0 0 1-.9-.9v-.7H7.1v.7a.9.9 0 0 1-.9.9H4.7a.9.9 0 0 1-.9-.9Z" />`;
+
+const gasolina = html`<path d="M6 21V5a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v16" />
+  <path d="M4.5 21h12" />
+  <path d="M8.5 6.5h4v3h-4Z" />
+  <path d="M15 8.5h1.3a1.7 1.7 0 0 1 1.7 1.7v5.6a1.6 1.6 0 0 0 3.2 0V9.4L19 7.2" />`;
+
+const llave = html`<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z" />`;
+
+const telefono = html`<rect x="7.5" y="3" width="9" height="18" rx="2.2" />
+  <path d="M11 17.5h2" />`;
+
+const familia = html`<circle cx="9" cy="7.8" r="2.8" />
+  <path d="M3.5 20c.6-3.4 2.7-5.2 5.5-5.2s4.9 1.8 5.5 5.2" />
+  <circle cx="17.2" cy="12.4" r="2.1" />
+  <path d="M14.6 20c.4-2.4 1.3-3.6 2.6-3.6s2.2 1.2 2.6 3.6" />`;
+
+const birrete = html`<path d="M12 4.5 21 9l-9 4.5L3 9Z" />
+  <path d="M6.5 11.2v4.3c0 1.4 2.5 2.6 5.5 2.6s5.5-1.2 5.5-2.6v-4.3" />
+  <path d="M21 9v5.2" />`;
+
+const bolsaDinero = html`<path d="M10 3.5h4l-.7 3.2c3.2 1.4 5.2 4 5.2 7.3A6.5 6.5 0 0 1 12 20.5 6.5 6.5 0 0 1 5.5 14c0-3.3 2-5.9 5.2-7.3Z" />
+  <path d="M12 10.5v7M13.9 12.1c-.4-.7-1.1-1.1-1.9-1.1-1.1 0-1.9.6-1.9 1.5s.8 1.3 1.9 1.5 1.9.6 1.9 1.5-.8 1.5-1.9 1.5c-.8 0-1.5-.4-1.9-1.1" />`;
+
+const caja = html`<path d="M12 3.5 20.5 8v8L12 20.5 3.5 16V8Z" />
+  <path d="M3.5 8 12 12.5 20.5 8M12 12.5v8" />`;
+
+const llaveDePuerta = html`<circle cx="16.5" cy="7.5" r="4.2" />
+  <path d="M13.5 10.5 4 20" />
+  <path d="M7.6 16.4l2.2 2.2M5.4 18.6l1.7 1.7" />`;
+
+const recibo = html`<path d="M6 3.5h12v16.2l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4Z" />
+  <path d="M9 8h6M9 11.5h6M9 15h3.5" />`;
+
+const escudo = html`<path d="M12 3.5 19.5 6v6c0 4.8-3.2 7.7-7.5 9-4.3-1.3-7.5-4.2-7.5-9V6Z" />
+  <path d="M9 12l2.2 2.2L15.5 10" />`;
+
+const mancuerna = html`<path d="M7.5 7.5v9M4.5 9.2v5.6M16.5 7.5v9M19.5 9.2v5.6" />
+  <path d="M7.5 12h9" />`;
+
+const tijeras = html`<circle cx="5.8" cy="6.3" r="2.4" />
+  <circle cx="5.8" cy="17.7" r="2.4" />
+  <path d="M8 8 20 20M8 16 20 4" />`;
+
+const laptop = html`<rect x="4.5" y="5" width="15" height="10" rx="1.5" />
+  <path d="M2.5 18.5h19" />`;
+
+const bus = html`<path d="M4.5 6a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v9.5a1.5 1.5 0 0 1-1.5 1.5h-12a1.5 1.5 0 0 1-1.5-1.5Z" />
+  <path d="M4.5 9.5h15" />
+  <path d="M8 20v.01M16 20v.01" stroke-width="2.4" />`;
+
+const vasoPopote = html`<path d="M6.5 8.5h11L16.2 20a1.9 1.9 0 0 1-1.9 1.7h-4.6A1.9 1.9 0 0 1 7.8 20Z" />
+  <path d="M9.5 8.5 10 6.5h4l.5 2M13.5 6.5 15 2.8l2.8.7" />`;
+
+const caramelo = html`<circle cx="12" cy="12" r="4.5" />
+  <path d="M7.5 10 3 8.5v7L7.5 14M16.5 10 21 8.5v7L16.5 14" />`;
+
+const wifi = html`<path d="M4 9.5a12.5 12.5 0 0 1 16 0M7 13a8.5 8.5 0 0 1 10 0M9.8 16.3a4.5 4.5 0 0 1 4.4 0" />
+  <path d="M12 19.5v.01" stroke-width="2.4" />`;
+
+const CONTENIDO_CATEGORIA_PROPIA = {
+  '🍔': hamburguesa, '🛒': carrito, '🍽️': cubiertos, '☕': tazaCafe,
+  '🚗': coche, '⛽': gasolina, '🛠️': llave,
+  '🏠': CONTENIDO_CATEGORIA.hogar,
+  '💡': CONTENIDO_CATEGORIA.servicios,
+  '📱': telefono,
+  '🎬': CONTENIDO_CATEGORIA.ocio,
+  '👕': CONTENIDO_CATEGORIA.ropa,
+  '👨‍👩‍👧': familia,
+  '📚': birrete,
+  '🏥': CONTENIDO_CATEGORIA.salud,
+  '✈️': CONTENIDO_CATEGORIA.viajes,
+  '🎁': CONTENIDO_CATEGORIA.regalos,
+  '🐾': CONTENIDO_CATEGORIA.mascotas,
+  '💳': CONTENIDO_CATEGORIA.dinero,
+  '📦': caja,
+  '💰': bolsaDinero,
+  '💼': CONTENIDO_CATEGORIA.trabajo,
+  '📈': CONTENIDO_CATEGORIA.crecimiento,
+  // extensiones para categorías nuevas del usuario
+  '🔑': llaveDePuerta,
+  '🧾': recibo,
+  '🛡️': escudo,
+  '🏋️': mancuerna,
+  '✂️': tijeras,
+  '💻': laptop,
+  '🚌': bus,
+  '🥤': vasoPopote,
+  '🍬': caramelo,
+  '🍭': caramelo,
+  '📶': wifi,
+};
+
+/** Versión exportada para pruebas: emojis de categorías con icono propio. */
+export const CATEGORIAS_CON_ICONO = Object.keys(CONTENIDO_CATEGORIA_PROPIA);
+
+/** Icono de categoría para listas y grillas: SVG propio si el emoji lo tiene,
+ *  si no el emoji tal cual (categorías personalizadas del usuario). */
+export function IconoCat({ emoji }) {
+  const contenido = CONTENIDO_CATEGORIA_PROPIA[emoji];
+  return contenido
+    ? html`<svg class="icono-categoria" ...${trazo} viewBox="0 0 24 24">${contenido}</svg>`
+    : html`<span>${emoji || '🏷️'}</span>`;
 }
 
 /** Contenido de cada icono de cuenta (el wrapper común lo pone IconoCuenta). */
