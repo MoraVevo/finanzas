@@ -4,10 +4,9 @@ import { html, useState, useEffect } from '../../vendor/preact-standalone.module
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
 import { saldoCuenta, saldoConvertido, convertir, planCuotas, TIPOS_CUENTA } from '../model.js';
-import ActividadBancaria from '../actividad-bancaria.js';
 import { Sheet, SelectorMoneda, FilaTx, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_EDITAR, ICONO_CAJA, ICONO_RESTAURAR } from '../iconos.js';
-import { uid, textoAEntero, enteroATexto, fmtConMoneda, fmtFecha, isoLocal, isoDia, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
+import { uid, textoAEntero, enteroATexto, fmtConMoneda, fmtFecha, isoLocal, isoDia } from '../util.js';
 
 export default function Cuentas() {
   const S = useStore();
@@ -128,12 +127,6 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
         ${cuenta.moneda !== principal && html`<div class="sub num">≈ ${fmtConMoneda(saldoConvertido(cuenta, txs, S.tasas, principal), principal)}</div>`}
       </div>
     </div>
-
-    ${cuenta.tipo === 'bancaria' && html`
-      <p class="ab-contexto">Últimos 6 meses. Para elegir otro período, abre Estadísticas y selecciona esta cuenta.</p>
-      <${ActividadBancaria} cuenta=${cuenta} txs=${txs} tasas=${S.tasas} cuentas=${S.cuentas}
-        desde=${sumarMesClave(claveMesActual(), -5) + '-01T00:00'} hasta=${rangoMes(claveMesActual())[1]} />
-    `}
 
     ${datos.some(d => d[1]) && html`<div class="tarjeta" style=${{ paddingTop: '4px' }}>
       ${datos.map(([etq, val]) => val && html`<div key=${etq} class="fila">

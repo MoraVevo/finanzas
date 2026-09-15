@@ -154,6 +154,8 @@ input[type="datetime-local"], input[type="date"] {
 .fila:active { background: color-mix(in srgb, var(--chip) 55%, transparent); }
 .fila .emoji { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
 .emoji svg.icono-cuenta { display: block; width: 24px; height: 24px; margin: 0 auto; }
+.emoji svg.icono-ui { display: block; width: 24px; height: 24px; margin: 0 auto; }
+svg.icono-ui { width: 15px; height: 15px; vertical-align: -2.5px; }
 .chips-scroll svg.icono-cuenta { width: 15px; height: 15px; flex-shrink: 0; }
 .sub svg.icono-cuenta { width: 13px; height: 13px; vertical-align: -2px; }
 .fila .cuerpo { flex: 1; min-width: 0; }

@@ -4,6 +4,7 @@ import fin from '../db.js';
 import { useStore, nav } from '../store.js';
 import { FilaTx, PickerCuentas, Sheet } from '../ui.js';
 import { convertir } from '../model.js';
+import { ICONO_ENTRA, ICONO_SALE, ICONO_TRANSFER, ICONO_ETIQUETA } from '../iconos.js';
 import { fmtConMoneda, fmtFecha, claveMesActual, sumarMesClave, rangoMes, fmtMesLargo } from '../util.js';
 
 const NOMBRE_TIPO = { gasto: 'Gastos', ingreso: 'Ingresos', transferencia: 'Transferencias' };
@@ -111,7 +112,7 @@ export default function Movimientos() {
 
     ${sheet === 'tipo' && html`<${Sheet} titulo="Filtrar por tipo" onClose=${() => setSheet(null)}>
       ${['gasto', 'ingreso', 'transferencia'].map(t => html`<div key=${t} class="fila" onClick=${() => { setFiltro({ ...filtro, tipo: filtro.tipo === t ? null : t }); setSheet(null); }}>
-        <span class="emoji">${{ gasto: '🔻', ingreso: '🔺', transferencia: '🔁' }[t]}</span>
+        <span class="emoji">${t === 'gasto' ? ICONO_SALE : t === 'ingreso' ? ICONO_ENTRA : ICONO_TRANSFER}</span>
         <div class="cuerpo"><div class="titulo">${NOMBRE_TIPO[t]}</div></div>
       </div>`)}
     <//>`}
@@ -130,7 +131,7 @@ export default function Movimientos() {
     ${sheet === 'etiqueta' && html`<${Sheet} titulo="Filtrar por actividad" onClose=${() => setSheet(null)}>
       ${S.etiquetas.length === 0 && html`<div class="vacio">Aún no tienes etiquetas. Agrégalas al registrar movimientos.</div>`}
       ${S.etiquetas.map(e => html`<div key=${e.id} class="fila" onClick=${() => { setFiltro({ ...filtro, etiqueta: filtro.etiqueta === e.nombre ? null : e.nombre }); setSheet(null); }}>
-        <span class="emoji">🏷️</span>
+        <span class="emoji">${ICONO_ETIQUETA}</span>
         <div class="cuerpo"><div class="titulo">#${e.nombre}</div></div>
       </div>`)}
     <//>`}

@@ -6,8 +6,9 @@ import { useStore, recargar, toast, nav } from '../store.js';
 import { Sheet, SelectorMoneda, EmojiPicker, Segmentado } from '../ui.js';
 import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.js';
 import { exportarCSV, exportarJSON, importarJSON, copiarParaIA } from '../export.js';
+import { ICONO_ETIQUETA } from '../iconos.js';
 
-const VERSION = '1.56';
+const VERSION = '1.59';
 
 export default function Ajustes() {
   const S = useStore();
@@ -157,7 +158,7 @@ function PanelEtiquetas({ store: S, cerrar }) {
       Las etiquetas agrupan gastos a través de categorías (p. ej. <b>#carro</b> = combustible + reparaciones + seguro).
     </div>
     ${S.etiquetas.map(e => html`<div key=${e.id} class="fila">
-      <span class="emoji">🏷️</span>
+      <span class="emoji">${ICONO_ETIQUETA}</span>
       <div class="cuerpo"><div class="titulo">#${e.nombre}</div></div>
       <button class="chip" onClick=${async () => {
         const usada = (await fin.todasTx()).some(t => (t.etiquetas || []).includes(e.nombre));

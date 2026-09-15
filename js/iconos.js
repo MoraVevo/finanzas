@@ -61,6 +61,52 @@ export const ICONO_RESTAURAR = html`<svg ...${trazo} viewBox="0 0 24 24">
   <path d="M4 4.5V9h4.5" />
 </svg>`;
 
+/* ---------- Iconos de interfaz (reemplazan emojis fijos) ----------
+   Se dimensionan solos: 24px dentro de .fila .emoji, 15px en línea. */
+
+/** Dos flechas opuestas: transferencia. */
+export const ICONO_TRANSFER = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 24 24">
+  <path d="M4.5 8.5h13M14 5l3.5 3.5L14 12" />
+  <path d="M19.5 15.5h-13M10 12l-3.5 3.5L10 19" />
+</svg>`;
+
+/** Tarjeta: pago de deuda. */
+export const ICONO_TARJETA = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 24 24">
+  <rect x="3.2" y="5.4" width="17.6" height="13.2" rx="2.6" />
+  <path d="M3.2 9.9h17.6M6.6 14.9h4" />
+</svg>`;
+
+/** Etiqueta colgante: actividades. */
+export const ICONO_ETIQUETA = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 24 24">
+  <path d="M3.5 12.2V5.5a2 2 0 0 1 2-2h6.7L20.6 11.9a2 2 0 0 1 0 2.8l-5.9 5.9a2 2 0 0 1-2.8 0Z" />
+  <path d="M7.8 7.8v.01" stroke-width="2.4" />
+</svg>`;
+
+/** Cámara: tomar foto. */
+export const ICONO_CAMARA = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 24 24">
+  <path d="M4 9a2 2 0 0 1 2-2h1.5l1.4-2h7.2l1.4 2H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" />
+  <circle cx="12" cy="12.7" r="3.2" />
+</svg>`;
+
+/** Paisaje en marco: elegir imagen. */
+export const ICONO_IMAGEN = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 24 24">
+  <rect x="3.5" y="5" width="17" height="14" rx="2.4" />
+  <path d="M6 16.5l4.2-4.2 3 3 2.6-2.6 3.2 3.2" />
+  <circle cx="9" cy="9.4" r="1.2" />
+</svg>`;
+
+/** Flecha hacia una bandeja: dinero que entra (ingreso). */
+export const ICONO_ENTRA = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 24 24">
+  <path d="M12 4.5v9M8 9.5l4 4 4-4" />
+  <path d="M4.5 15.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2" />
+</svg>`;
+
+/** Flecha saliendo de una bandeja: dinero que sale (gasto). */
+export const ICONO_SALE = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 24 24">
+  <path d="M12 13.5v-9M8 8.5l4-4 4 4" />
+  <path d="M4.5 15.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2" />
+</svg>`;
+
 /** Categorías: agrupa los emojis del selector en buckets con icono propio. */
 
 /** Categorías: agrupa los emojis del selector en buckets con icono propio. */

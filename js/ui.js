@@ -1,7 +1,7 @@
 // Componentes compartidos de UI (Preact + htm, sin build).
 import { html, useState, useEffect, useRef } from '../vendor/preact-standalone.module.js';
 import { saldoCuenta } from './model.js';
-import { IconoCuenta } from './iconos.js';
+import { IconoCuenta, ICONO_TRANSFER, ICONO_TARJETA, ICONO_CAMARA, ICONO_IMAGEN } from './iconos.js';
 import { fmtConMoneda, fmtFecha, fmtHora, isoLocal, isoDia } from './util.js';
 
 /* ---------- Sheet: panel deslizante inferior ----------
@@ -216,16 +216,17 @@ export function FilaTx({ tx, cuentas, categorias, onClick }) {
   const esPagoDeuda = tx.tipo === 'transferencia' && destino && (destino.tipo === 'tarjeta' || destino.tipo === 'deuda');
   const clase = tx.tipo === 'gasto' ? 'm-gasto' : tx.tipo === 'ingreso' ? 'm-ingreso' : 'm-transf';
   const signo = tx.tipo === 'gasto' ? '−' : tx.tipo === 'ingreso' ? '+' : '→ ';
+  // El emoji vive SOLO en el ícono de la fila: títulos y subtítulos van limpios.
   const titulo = tx.tipo === 'transferencia'
     ? (esPagoDeuda ? `Pago de deuda · ${destino?.nombre || '?'}` : `${cta?.nombre || '?'} → ${destino?.nombre || '?'}`)
-    : (tx.motivo || `${cat?.emoji || ''} ${cat?.nombre || (tx.tipo === 'ingreso' ? 'Ingreso' : 'Gasto')}`.trim());
+    : (tx.motivo || cat?.nombre || (tx.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'));
   const sub = [
-    tx.motivo && cat && tx.tipo !== 'transferencia' ? `${cat.emoji} ${cat.nombre}`
-      : tx.tipo === 'transferencia' ? (esPagoDeuda ? '💳 Pago de deuda' : '🔁 Transferencia') : null,
+    tx.motivo && cat && tx.tipo !== 'transferencia' ? cat.nombre
+      : tx.tipo === 'transferencia' ? (esPagoDeuda ? 'Pago de deuda' : 'Transferencia') : null,
     cta && tx.tipo !== 'transferencia' ? cta.nombre : null,
     (tx.etiquetas || []).map(e => '#' + e).join(' ') || null].filter(Boolean).join(' · ');
   return html`<div class="fila" onClick=${onClick}>
-    <span class="emoji">${tx.tipo === 'transferencia' ? (esPagoDeuda ? '💳' : '🔁') : (cat?.emoji || (tx.tipo === 'ingreso' ? '💰' : '📦'))}</span>
+    <span class="emoji">${tx.tipo === 'transferencia' ? (esPagoDeuda ? ICONO_TARJETA : ICONO_TRANSFER) : (cat?.emoji || (tx.tipo === 'ingreso' ? '💰' : '📦'))}</span>
     <div class="cuerpo">
       <div class="titulo">${titulo}</div>
       <div class="sub">${sub}</div>
@@ -323,8 +324,8 @@ export function Comprobantes({ existentes = [], nuevas = [], onQuitarExistente, 
   const elegir = async archivo => { if (archivo) onAgregar(archivo); };
   return html`<div>
     <div class="chips-scroll">
-      <button class="chip" onClick=${() => cam.current.click()}>📷 Tomar foto</button>
-      <button class="chip" onClick=${() => bib.current.click()}>🖼️ Elegir imagen</button>
+      <button class="chip" onClick=${() => cam.current.click()}>${ICONO_CAMARA} Tomar foto</button>
+      <button class="chip" onClick=${() => bib.current.click()}>${ICONO_IMAGEN} Elegir imagen</button>
     </div>
     <input ref=${cam} type="file" accept="image/*" capture="environment" hidden onChange=${e => elegir(e.target.files[0])} />
     <input ref=${bib} type="file" accept="image/*" hidden onChange=${e => elegir(e.target.files[0])} />

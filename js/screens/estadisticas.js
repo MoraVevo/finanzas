@@ -8,7 +8,7 @@ import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
 import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
-import { IconoCuenta, IconoCategoria } from '../iconos.js';
+import { IconoCuenta, IconoCategoria, ICONO_ETIQUETA, ICONO_TRANSFER, ICONO_TARJETA } from '../iconos.js';
 import ActividadBancaria from '../actividad-bancaria.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
@@ -339,9 +339,11 @@ function VistaRango({ S, todo }) {
     return t.length <= 10 ? t : `${monedaInfo(cod).simbolo}${fmtCompacto(v, cod)}`;
   };
 
-  // En un banco importa la liquidez: las transferencias forman parte de las
-  // entradas y salidas. Mantener las mismas fechas del selector visible.
-  if (cuentaObj?.tipo === 'bancaria') return html`<div>
+  // Cuentas de débito (efectivo, bancaria, ahorro): importa la liquidez — las
+  // transferencias forman parte de las entradas y salidas. Mantener las mismas
+  // fechas del selector visible.
+  const esDebito = !!cuentaObj && ['efectivo', 'bancaria', 'ahorro'].includes(cuentaObj.tipo);
+  if (esDebito) return html`<div>
     <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
     <${SelectorCuentas} S=${S} todo=${todo} cuentaScope=${cuentaScope} setCuentaScope=${setCuentaScope} />
     <${ActividadBancaria} cuenta=${cuentaObj} txs=${todo} tasas=${S.tasas}
@@ -352,7 +354,7 @@ function VistaRango({ S, todo }) {
     <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
     <${SelectorCuentas} S=${S} todo=${todo} cuentaScope=${cuentaScope} setCuentaScope=${setCuentaScope} />
 
-    ${!cuentaScope && html`<p class="ab-contexto">Para ver entradas, salidas y transferencias de un banco, elige su cuenta arriba.</p>`}
+    ${!cuentaScope && html`<p class="ab-contexto">Para ver entradas, salidas y transferencias de una cuenta, elígela arriba.</p>`}
 
     ${esPasiva ? html`
     <div class="stats-grid-3">
@@ -445,7 +447,7 @@ function VistaRango({ S, todo }) {
     ${st.porEtiqueta.length > 0 && html`<div class="tarjeta">
       <h3>Por actividad / etiqueta</h3>
       ${st.porEtiqueta.map(e => html`<div key=${e.id} class="barra-fila">
-        <div class="info"><span>🏷️ #${e.nombre}</span><span class="num">${fmtConMoneda(e.monto, principal)}</span></div>
+        <div class="info"><span>${ICONO_ETIQUETA} #${e.nombre}</span><span class="num">${fmtConMoneda(e.monto, principal)}</span></div>
         <div class="pista"><div class="lleno" style=${{ width: (e.monto / st.porEtiqueta[0].monto * 100) + '%', background: 'var(--transfer)' }}></div></div>
       </div>`)}
     <//>`}
@@ -569,7 +571,7 @@ function VistaFlujo({ S, todo }) {
         const positivo = f.esPagoTarjeta || f.tipo === 'ingreso' || esCargoFijo;
         return html`<div key=${f.id} class="fila" onClick=${f.esFijo ? undefined : () => setEditor(f)}>
           <div class="cuerpo">
-            <div class="titulo">${f.esPagoTarjeta ? '💳 ' : f.esFijo ? '🔁 ' : ''}${f.tipo === 'transferencia' && !f.esFijo
+            <div class="titulo">${f.esPagoTarjeta ? html`${ICONO_TARJETA} ` : f.esFijo ? html`${ICONO_TRANSFER} ` : ''}${f.tipo === 'transferencia' && !f.esFijo
               ? (esDeuda ? `Pago de deuda · ${destinoF?.nombre || '?'}` : `${S.cuentas.find(c => c.id === f.cuenta)?.nombre || '?'} → ${destinoF?.nombre || '?'}`)
               : (f.nombre || (f.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'))}</div>
             <div class="sub">${esCargoFijo

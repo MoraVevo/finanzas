@@ -16,7 +16,9 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+# ThreadingHTTPServer: los navegadores abren conexiones de preconnect sin datos
+# que con el servidor de un solo hilo lo dejan colgado.
 socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(('127.0.0.1', PUERTO), Manejador) as httpd:
+with http.server.ThreadingHTTPServer(('127.0.0.1', PUERTO), Manejador) as httpd:
     print(f'Sirviendo sin caché en http://localhost:{PUERTO}')
     httpd.serve_forever()
