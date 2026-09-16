@@ -3,12 +3,13 @@ import { html, useState } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
 import { SelectorMoneda } from '../ui.js';
+import { IconoCuenta } from '../iconos.js';
 import { uid, textoAEntero, enteroATexto } from '../util.js';
 
 const PRESETS = [
-  { tipo: 'efectivo', nombre: 'Efectivo', emoji: '💵' },
-  { tipo: 'bancaria', nombre: 'Cuenta bancaria', emoji: '🏦' },
-  { tipo: 'tarjeta', nombre: 'Tarjeta de crédito', emoji: '💳' },
+  { tipo: 'efectivo', nombre: 'Efectivo' },
+  { tipo: 'bancaria', nombre: 'Cuenta bancaria' },
+  { tipo: 'tarjeta', nombre: 'Tarjeta de crédito' },
 ];
 
 export default function Onboarding() {
@@ -20,7 +21,7 @@ export default function Onboarding() {
 
   const toggle = i => setCuentas(cuentas.map((c, j) => j === i ? { ...c, activa: !c.activa } : c));
   const upd = (i, p) => setCuentas(cuentas.map((c, j) => j === i ? { ...c, ...p } : c));
-  const agregar = () => setCuentas([...cuentas, { tipo: 'ahorro', nombre: '', emoji: '🏺', activa: true, saldo: '', moneda }]);
+  const agregar = () => setCuentas([...cuentas, { tipo: 'ahorro', nombre: '', activa: true, saldo: '', moneda }]);
 
   const empezar = async () => {
     const finales = cuentas.filter(c => c.activa && c.nombre.trim());
@@ -60,14 +61,17 @@ export default function Onboarding() {
       ${cuentas.map((c, i) => html`<div key=${i} style=${{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px', opacity: c.activa ? 1 : .45 }}>
         <input type="checkbox" checked=${c.activa} onChange=${() => toggle(i)} style=${{ width: '20px', height: '20px' }} />
         <div style=${{ flex: 1, display: 'grid', gap: '6px' }}>
-          <input placeholder=${c.nombre || 'Nombre'} value=${c.nombre} onInput=${e => upd(i, { nombre: e.target.value })} />
+          <div style=${{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+            <span class="emoji" style=${{ flexShrink: 0 }}><${IconoCuenta} tipo=${c.tipo} /></span>
+            <input placeholder=${c.nombre || 'Nombre'} value=${c.nombre} onInput=${e => upd(i, { nombre: e.target.value })} style=${{ flex: 1 }} />
+          </div>
           <div style=${{ display: 'flex', gap: '6px' }}>
             <select value=${c.tipo} onChange=${e => upd(i, { tipo: e.target.value })} style=${{ flex: 1 }}>
-              <option value="efectivo">💵 Efectivo</option>
-              <option value="bancaria">🏦 Bancaria</option>
-              <option value="ahorro">🏺 Ahorro</option>
-              <option value="tarjeta">💳 Tarjeta de crédito</option>
-              <option value="deuda">📉 Deuda / préstamo</option>
+              <option value="efectivo">Efectivo</option>
+              <option value="bancaria">Bancaria</option>
+              <option value="ahorro">Ahorro</option>
+              <option value="tarjeta">Tarjeta de crédito</option>
+              <option value="deuda">Deuda / préstamo</option>
             </select>
             <input placeholder=${(c.tipo === 'tarjeta' || c.tipo === 'deuda') ? 'Deuda actual' : 'Saldo actual'}
               inputMode="decimal" value=${c.saldo} style=${{ flex: 1, textAlign: 'right' }}
