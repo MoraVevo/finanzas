@@ -8,7 +8,7 @@ import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.j
 import { exportarCSV, exportarJSON, importarJSON, copiarParaIA, copiarRespaldoJSON } from '../export.js';
 import { ICONO_ETIQUETA, IconoCat } from '../iconos.js';
 
-const VERSION = '1.80';
+const VERSION = '1.81';
 
 export default function Ajustes() {
   const S = useStore();
@@ -229,9 +229,6 @@ function PanelDatos({ store: S, cerrar }) {
     <button class="btn btn-primario" disabled=${ocupado} onClick=${async () => { setOcupado(true); try { await exportarCSV(ctx); } catch (e) { toast('Error: ' + e.message); } setOcupado(false); }}>
       Exportar CSV (Excel / Sheets)
     </button>
-    <div class="dato-cuenta" style=${{ margin: '6px 0 10px' }}>
-      Columnas: fecha, hora, tipo, monto, moneda, monto convertido, cuenta, categoría, etiquetas, motivo.
-    </div>
 
     <div style=${{ display: 'flex', gap: '8px' }}>
       <button class="btn btn-suave" disabled=${ocupado} onClick=${async () => { setOcupado(true); try { await exportarJSON({ incluirImagenes: false }); } catch (e) { toast('Error: ' + e.message); } setOcupado(false); }}>
@@ -253,9 +250,7 @@ function PanelDatos({ store: S, cerrar }) {
       </button>
     </div>
     <div class="dato-cuenta" style=${{ margin: '6px 0 10px' }}>
-      El respaldo completo incluye todo (cuentas, categorías, movimientos, ajustes) y sirve para restaurar o mudar de dispositivo.
-      "Copiar JSON" lleva el respaldo (sin comprobantes) directo al portapapeles: en iPhone la hoja de compartir un archivo
-      solo pega el nombre al copiarlo, así que usa este botón para pegar el contenido completo.
+      Para restaurar o mudar de dispositivo. «Copiar JSON» lo lleva al portapapeles, sin archivo.
     </div>
     ${textoRespaldo && html`<div style=${{ margin: '-2px 0 10px' }}>
       <div class="dato-cuenta">No se pudo usar el portapapeles aquí. Copia manualmente el texto de abajo:</div>
@@ -266,9 +261,7 @@ function PanelDatos({ store: S, cerrar }) {
     <div class="tarjeta" style=${{ background: 'var(--accent-soft)', boxShadow: 'none' }}>
       <h3 style=${{ color: 'var(--accent)' }}>Copiar para IA</h3>
       <div class="dato-cuenta" style=${{ marginBottom: '8px' }}>
-        Copia al portapapeles un JSON con tu patrimonio, los movimientos recientes y el contexto de pagos (cortes de tarjeta,
-        qué vence antes de tu próximo ingreso, fijos, cuotas, programados y proyección a 2 meses), listo para pegar en
-        ChatGPT (u otra IA) con una instrucción de análisis incluida. No incluye comprobantes.
+        Movimientos recientes, patrimonio y contexto de pagos, con la instrucción de análisis incluida.
       </div>
       <div class="chips-scroll" style=${{ marginBottom: '8px' }}>
         ${[3, 6, 12].map(m => html`<button key=${m} class=${'chip' + (mesesIA === m ? ' sel' : '')} onClick=${() => setMesesIA(m)}>${m} meses</button>`)}
