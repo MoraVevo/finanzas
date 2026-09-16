@@ -57,8 +57,12 @@ export default function Movimientos() {
   const grupos = [];
   for (const t of filtradas) {
     const dia = t.fecha.slice(0, 10);
-    const g = grupos.find(x => x.dia === dia);
-    if (g) g.txs.push(t); else grupos.push({ dia, txs: [t] });
+    let g = grupos.find(x => x.dia === dia);
+    if (!g) { g = { dia, txs: [], entra: 0, sale: 0 }; grupos.push(g); }
+    g.txs.push(t);
+    const monto = convertir(t.monto, t.moneda, principal, S.tasas, t.fecha);
+    if (t.tipo === 'gasto') g.sale += monto;
+    else if (t.tipo === 'ingreso') g.entra += monto;
   }
 
   const hayFiltros = filtro.tipo || filtro.cuenta || filtro.categoria || filtro.etiqueta || q;
@@ -103,7 +107,13 @@ export default function Movimientos() {
     </div>
 
     ${grupos.map(g => html`<div key=${g.dia} class="tarjeta" style=${{ paddingTop: '6px' }}>
-      <div class="grupo-dia"><span class="fecha">${fmtFecha(g.dia)}</span></div>
+      <div class="grupo-dia"><span class="fecha">${fmtFecha(g.dia)}</span>
+        <span class="total num">
+          ${g.entra > 0 && html`<span style=${{ color: 'var(--ingreso)', fontWeight: 700 }}>+${fmtConMoneda(g.entra, principal)}</span>`}
+          ${g.entra > 0 && g.sale > 0 && ' · '}
+          ${g.sale > 0 && html`<span style=${{ color: 'var(--gasto)', fontWeight: 700 }}>−${fmtConMoneda(g.sale, principal)}</span>`}
+        </span>
+      </div>
       ${g.txs.map(tx => html`<${FilaTx} key=${tx.id} tx=${tx} cuentas=${S.cuentas} categorias=${S.categorias}
         onClick=${() => nav('#/agregar?id=' + tx.id)} />`)}
     </div>`)}

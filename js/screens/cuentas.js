@@ -17,6 +17,15 @@ export default function Cuentas() {
   useEffect(() => {
     let vivo = true;
     fin.todasTx().then(t => vivo && setTxs(t));
+    // deep-link #/cuentas?id=… (chips de Inicio): abre el detalle directo
+    const id = new URLSearchParams(location.hash.split('?')[1] || '').get('id');
+    if (id) {
+      const c = S.cuentas.find(x => x.id === id);
+      if (c) {
+        setDetalle(c);
+        history.replaceState(null, '', '#/cuentas'); // que no reabra al volver
+      }
+    }
     return () => { vivo = false; };
   }, [S.cuentas]);
 

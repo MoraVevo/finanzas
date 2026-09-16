@@ -6,7 +6,7 @@ import { useStore, nav, recargar, toast } from '../store.js';
 import { saldoConvertido, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo, planCuotas, cuentaEnPatrimonio, fechasFijo } from '../model.js';
 import { FilaTx, Sheet, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_AJUSTES } from '../iconos.js';
-import { fmtConMoneda, fmtFecha, claveMesActual, rangoMes, fmtMesLargo, uid, textoAEntero, enteroATexto, isoDia } from '../util.js';
+import { fmtConMoneda, fmtFecha, claveMesActual, rangoMes, fmtMesLargo, sumarMesClave, uid, textoAEntero, enteroATexto, isoDia } from '../util.js';
 
 export default function Hoy() {
   const S = useStore();
@@ -36,6 +36,10 @@ export default function Hoy() {
   const excedido = presupuestoTotal && stats.gasto > presupuestoTotal;
   const pa = poderAdquisitivo({ fijos: S.fijos, cuotas: S.cuotas, cuentas: S.cuentas, txs, tasas: S.tasas, principal });
   const fijosActivos = S.fijos.filter(f => f.activa !== false);
+  // referencia discreta: neto del mes anterior (solo si hubo movimientos)
+  const claveAnterior = sumarMesClave(clave, -1);
+  const huboAnterior = txs.some(t => t.fecha.slice(0, 7) === claveAnterior);
+  const netoAnterior = huboAnterior ? statsMes(claveAnterior, txs, S).neto : null;
 
   /* ---- Tarjeta principal: dinero real y si alcanza hasta el próximo ingreso ---- */
   const activas = S.cuentas.filter(c => !c.archivada);
@@ -81,9 +85,12 @@ export default function Hoy() {
   const grupos = [];
   for (const tx of recientes) {
     const dia = tx.fecha.slice(0, 10);
-    const g = grupos.find(x => x.dia === dia);
-    if (g) { g.txs.push(tx); if (tx.tipo === 'gasto') g.gasto += convertir(tx.monto, tx.moneda, principal, S.tasas, tx.fecha); }
-    else grupos.push({ dia, txs: [tx], gasto: tx.tipo === 'gasto' ? convertir(tx.monto, tx.moneda, principal, S.tasas, tx.fecha) : 0 });
+    let g = grupos.find(x => x.dia === dia);
+    if (!g) { g = { dia, txs: [], entra: 0, sale: 0 }; grupos.push(g); }
+    g.txs.push(tx);
+    const monto = convertir(tx.monto, tx.moneda, principal, S.tasas, tx.fecha);
+    if (tx.tipo === 'gasto') g.sale += monto;
+    else if (tx.tipo === 'ingreso') g.entra += monto;
   }
 
   return html`<div class="vista">
@@ -115,13 +122,13 @@ export default function Hoy() {
           : 'Sin gastos fijos: prográmalos abajo (＋) para saber si te alcanza.'}</span>`}
       </div>
       <div class="chips-scroll" style=${{ marginTop: '12px', justifyContent: 'center' }}>
-        ${debito.length > 0 && html`<button class="chip" onClick=${() => nav('#/cuentas')}>
+        ${debito.length > 0 && html`<button class="chip" onClick=${() => nav(debito.length === 1 ? '#/cuentas?id=' + debito[0].id : '#/cuentas')}>
           <${IconoCuenta} tipo="bancaria" /> Débito <span class="num">${fmtConMoneda(liquido, principal)}</span>
         </button>`}
-        ${debeTarjetas > 0 && html`<button class="chip" onClick=${() => nav('#/cuentas')}>
+        ${debeTarjetas > 0 && html`<button class="chip" onClick=${() => nav(tarjetas.length === 1 ? '#/cuentas?id=' + tarjetas[0].id : '#/cuentas')}>
           <${IconoCuenta} tipo="tarjeta" /> Tarjetas <span class="num" style=${{ color: 'var(--gasto)' }}>−${fmtConMoneda(debeTarjetas, principal)}</span>
         </button>`}
-        ${debePrestamos > 0 && html`<button class="chip" onClick=${() => nav('#/cuentas')}>
+        ${debePrestamos > 0 && html`<button class="chip" onClick=${() => nav(prestamos.length === 1 ? '#/cuentas?id=' + prestamos[0].id : '#/cuentas')}>
           <${IconoCuenta} tipo="deuda" /> Préstamos <span class="num" style=${{ color: 'var(--gasto)' }}>−${fmtConMoneda(debePrestamos, principal)}</span>
         </button>`}
       </div>
@@ -143,6 +150,9 @@ export default function Hoy() {
           <div class="num" style=${{ fontSize: '19px', fontWeight: 800, color: stats.neto >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${fmtConMoneda(stats.neto, principal, true)}</div>
         </div>
       </div>
+      ${netoAnterior !== null && html`<div class="dato-cuenta" style=${{ textAlign: 'center', marginTop: '8px' }}>
+        ${fmtMesLargo(claveAnterior)}: <b class="num" style=${{ color: netoAnterior >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${netoAnterior >= 0 ? '+' : '−'}${fmtConMoneda(Math.abs(netoAnterior), principal)}</b>
+      <//>`}
       ${presupuestoTotal > 0 && html`<div style=${{ marginTop: '12px' }}>
         <div style=${{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', marginBottom: '5px', color: excedido ? 'var(--gasto)' : 'var(--muted)' }}>
           <span>Presupuesto</span><span class="num">${fmtConMoneda(stats.gasto, principal)} / ${fmtConMoneda(presupuestoTotal, principal)}</span>
@@ -195,7 +205,11 @@ export default function Hoy() {
       ${grupos.map(g => html`<div key=${g.dia}>
         <div class="grupo-dia">
           <span class="fecha">${fmtFecha(g.dia)}</span>
-          ${g.gasto > 0 && html`<span class="total num">−${fmtConMoneda(g.gasto, principal)}</span>`}
+          <span class="total num">
+            ${g.entra > 0 && html`<span style=${{ color: 'var(--ingreso)', fontWeight: 700 }}>+${fmtConMoneda(g.entra, principal)}</span>`}
+            ${g.entra > 0 && g.sale > 0 && ' · '}
+            ${g.sale > 0 && html`<span style=${{ color: 'var(--gasto)', fontWeight: 700 }}>−${fmtConMoneda(g.sale, principal)}</span>`}
+          </span>
         </div>
         ${g.txs.map(tx => html`<${FilaTx} key=${tx.id} tx=${tx} cuentas=${S.cuentas} categorias=${S.categorias}
           onClick=${() => nav('#/agregar?id=' + tx.id)} />`)}
