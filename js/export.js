@@ -3,8 +3,8 @@
 // listo para pegar en un asistente de IA (ChatGPT u otro) y que analice tus finanzas.
 
 import fin from './db.js';
-import { fmtMonto, monedaInfo, blobAB64, b64ABlob, isoLocal, claveMes, sumarMesClave, fmtConMoneda } from './util.js';
-import { convertir, saldoCuenta, patrimonio } from './model.js';
+import { fmtMonto, monedaInfo, blobAB64, b64ABlob, isoLocal, isoDia, claveMes, sumarMesClave, fmtConMoneda } from './util.js';
+import { convertir, saldoCuenta, patrimonio, pagosTarjeta, deudasAntesDeIngreso, flujoEfectivo, planCuotas } from './model.js';
 
 /* ---------- descarga de archivos ---------- */
 export async function descargarArchivo(nombre, blob) {
@@ -61,9 +61,17 @@ export async function exportarJSON({ incluirImagenes }) {
     fin.presupuestos(), fin.tasas(), fin.futuros(), fin.fijos(), fin.cuotas(), db2().ajustes.toArray(), db2().adjuntos.toArray()
   ]);
   const data = {
-    formato: 'finanzas-backup', version: 1, exportadoEn: new Date().toISOString(),
+    formato: 'finanzas-backup', version: 2, exportadoEn: new Date().toISOString(),
     cuentas, transacciones, categorias, etiquetas, presupuestos, tasas, futuros, fijos, cuotas, ajustes
   };
+  // contexto derivado para quien lea el respaldo (tú o una IA): pagos de
+  // tarjeta con fechas de corte, compromisos, programados y proyección. La
+  // importación lo ignora — solo restaura las tablas.
+  const ajustesApp = ajustes.find(a => a.key === 'app')?.valor || {};
+  data.contexto_financiero = contextoFinanciero({
+    cuentas, txs: transacciones.filter(t => !t.eliminada), tasas,
+    principal: ajustesApp.monedaPrincipal || 'GTQ', futuros, fijos, cuotas,
+  });
   if (incluirImagenes) {
     data.adjuntos = await Promise.all(adjuntos.map(async a => ({
       ...a, blob: undefined, data: await blobAB64(a.blob)
@@ -75,6 +83,97 @@ export async function exportarJSON({ incluirImagenes }) {
   );
 }
 const db2 = () => fin._db(); // accessor interno, definido abajo
+
+/* ---------- Contexto financiero derivado (para IA) ----------
+   Lo que un LLM no puede deducir de las tablas crudas: cuánto debes pagar de
+   cada tarjeta y cuándo, qué vence antes del próximo ingreso, qué fijos y
+   cuotas vienen, y cómo queda el saldo proyectado a 2 meses. Los saldos dejan
+   de ser una foto estática y se vuelven movimiento: por qué están así, qué se
+   paga ahora y cómo se ve el futuro. */
+export function contextoFinanciero({ cuentas, txs, tasas, principal, futuros = [], fijos = [], cuotas = [] }) {
+  const activas = cuentas.filter(c => !c.archivada);
+  const nombreC = id => cuentas.find(c => c.id === id)?.nombre || null;
+  const esPasiva = c => c.tipo === 'tarjeta' || c.tipo === 'deuda';
+  const hoyD = isoDia();
+  const pat = patrimonio(cuentas, txs, tasas, principal);
+  const deudaYa = deudasAntesDeIngreso({ cuentas, txs, tasas, principal, futuros, fijos, cuotas });
+  const fl = flujoEfectivo({ cuentas, txs, tasas, principal, futuros, fijos, cuotas, futuroMeses: 2 });
+  const concepto = e => e.esPagoTarjeta ? e.nombre
+    : e.esCargoTarjeta ? `${e.nombre} (se cargará a ${e.fuenteNombre})`
+    : e.esCuota ? `${e.nombre} · cuota ${e.cuotaK} de ${e.cuotaN}`
+    : e.tipo === 'transferencia' ? `${nombreC(e.cuenta)} → ${nombreC(e.cuentaDestino)}${e.nombre ? ' · ' + e.nombre : ''}`
+    : (e.nombre || (e.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'));
+  return {
+    generado: hoyD,
+    moneda_principal: principal,
+    como_leerlo: 'Fechas en ISO (aaaa-mm-dd); "día de corte/pago" son días del mes. Los montos ya están formateados con su moneda. "deudas_por_pagar_ahora" es lo que vence antes del próximo ingreso fijo. "proximos_pagos_estimados" de cada tarjeta: el primero cubre lo ya gastado en el ciclo cerrado; los siguientes proyectan fijos y cuotas. "proyeccion_2_meses" asume SOLO lo registrado (fijos, cuotas y programados): no predice gastos nuevos. Saldo negativo = deuda; las cuentas "tercero" no son del usuario.',
+    patrimonio_hoy: {
+      total: fmtConMoneda(pat.total, principal),
+      deudas_totales: fmtConMoneda(pat.deudas, principal),
+      por_cuenta: activas.map(c => ({ nombre: c.nombre, tipo: c.tipo, moneda: c.moneda, saldo: fmtConMoneda(saldoCuenta(c, txs, tasas), c.moneda) })),
+    },
+    tarjetas_y_deudas: activas.filter(esPasiva).map(c => {
+      const saldo = saldoCuenta(c, txs, tasas);
+      return {
+        nombre: c.nombre, tipo: c.tipo, moneda: c.moneda,
+        dia_de_corte: c.corte || null,
+        dia_limite_de_pago: c.pagoDia || null,
+        deuda_hoy: fmtConMoneda(Math.max(0, -saldo), c.moneda),
+        limite_de_credito: c.limite > 0 ? fmtConMoneda(c.limite, c.moneda) : null,
+        credito_disponible: c.limite > 0 ? fmtConMoneda(Math.max(0, c.limite + saldo), c.moneda) : null,
+        proximos_pagos_estimados: (c.pagoDia
+          ? pagosTarjeta(c, { txs, tasas, principal, fijos, cuotas, n: 2 })
+          : []).map(p => ({ fecha: p.fecha, monto: fmtConMoneda(p.montoP, principal) })),
+      };
+    }),
+    deudas_por_pagar_ahora: {
+      total: fmtConMoneda(deudaYa.total, principal),
+      ventana: deudaYa.sinIngresoFijo
+        ? 'próximos 30 días (no hay ingreso fijo registrado)'
+        : `desde mañana hasta el ingreso fijo del ${deudaYa.limite}`,
+    },
+    ingresos_y_gastos_fijos: fijos.filter(f => f.activa !== false).map(f => ({
+      nombre: f.nombre || (f.tipo === 'ingreso' ? 'Ingreso fijo' : 'Gasto fijo'),
+      tipo: f.tipo,
+      monto: fmtConMoneda(f.monto, f.moneda),
+      frecuencia: f.frecuencia,
+      dia: f.dia ?? null,
+      cuenta: f.tipo === 'ingreso' ? nombreC(f.cuenta) : nombreC(f.fuente),
+    })),
+    planes_de_cuotas: cuotas.filter(p => p.activa !== false && !planCuotas(p).terminado).map(p => {
+      const i = planCuotas(p);
+      return {
+        nombre: p.nombre || 'Plan de pago',
+        paga_a: nombreC(p.cuentaId),
+        cuota_mensual: fmtConMoneda(i.cuota, p.moneda),
+        pagadas: i.vencidas, total_cuotas: i.n,
+        proxima_cuota: i.proxima ? { fecha: i.proxima.fecha, monto: fmtConMoneda(i.montoK(i.proxima.k), p.moneda) } : null,
+        pendiente_total: fmtConMoneda(i.pendiente, p.moneda),
+        ultima_cuota: i.ultima,
+      };
+    }),
+    pagos_programados: [...futuros].sort((a, b) => a.fecha.localeCompare(b.fecha)).map(f => ({
+      fecha: f.fecha,
+      tipo: f.tipo,
+      nombre: f.nombre || null,
+      monto: fmtConMoneda(f.monto, f.moneda),
+      desde: nombreC(f.cuenta),
+      hacia: f.cuentaDestino ? nombreC(f.cuentaDestino) : null,
+      ...(f.fecha < hoyD ? { aviso: 'VENCIDO sin registrar como movimiento' } : {}),
+    })),
+    proyeccion_2_meses: {
+      saldo_hoy: fmtConMoneda(fl.balanceHoy, principal),
+      saldo_proyectado_en_2_meses: fmtConMoneda(fl.serie.at(-1).balance, principal),
+      punto_mas_bajo: { fecha: fl.minimo.fecha, saldo: fmtConMoneda(fl.minimo.balance, principal) },
+      proximos_movimientos: fl.lista.slice(0, 25).map(e => ({
+        fecha: e.fecha,
+        concepto: concepto(e),
+        monto: fmtConMoneda(e.monto, e.moneda),
+        saldo_proyectado_despues: fmtConMoneda(e.balanceDespues, principal),
+      })),
+    },
+  };
+}
 
 /* ---------- Importar respaldo (reemplaza todo) ---------- */
 export async function importarJSON(texto) {
@@ -115,6 +214,7 @@ export async function copiarParaIA({ meses = 3, tasas, principal, cuentas, categ
   const nombreCuenta = new Map(cuentas.map(c => [c.id, c.nombre]));
   const nombreCat = new Map(categorias.map(c => [c.id, c.nombre]));
   const todasTx = await fin.todasTx();
+  const [futuros, fijos, cuotas] = await Promise.all([fin.futuros(), fin.fijos(), fin.cuotas()]);
 
   const paquete = {
     contexto: 'Registro personal de finanzas. Moneda principal para reportes: ' + principal +
@@ -132,6 +232,7 @@ export async function copiarParaIA({ meses = 3, tasas, principal, cuentas, categ
         }))
       };
     })(),
+    contexto_financiero: contextoFinanciero({ cuentas, txs: todasTx, tasas, principal, futuros, fijos, cuotas }),
     periodo_analizado: { meses, desde: desdeClave + '-01', hasta: hasta.slice(0, 10) },
     transacciones: txs.map(t => ({
       fecha: t.fecha, tipo: t.tipo,
@@ -146,9 +247,7 @@ export async function copiarParaIA({ meses = 3, tasas, principal, cuentas, categ
     }))
   };
   const texto = JSON.stringify(paquete, null, 1);
-  const paqueteFinal = 'Analiza mis finanzas personales con este JSON (datos reales de mi app). Dame: resumen de situación, ' +
-    'patrones de gasto, top categorías y actividades/etiquetas, días de mayor consumo, entrada vs salida, ' +
-    'alertas y recomendaciones concretas y accionables. Luego responde dudas específicas que te haga.\n\n' + texto;
+  const paqueteFinal = 'Analiza mis finanzas personales con este JSON (datos reales de mi app). Fíjate en "contexto_financiero": ahí están mis pagos de tarjeta con fechas de corte y pago, lo que vence antes de mi próximo ingreso, mis fijos, cuotas y pagos programados, y la proyección a 2 meses. Dame: resumen de situación (incluye qué debo pagar primero y cuándo), patrones de gasto, top categorías y actividades/etiquetas, días de mayor consumo, entrada vs salida, alertas (especialmente si un pago no alcanza a cubrirse con mi saldo actual) y recomendaciones concretas y accionables. Luego responde dudas específicas que te haga.\n\n' + texto;
   try {
     await navigator.clipboard.writeText(paqueteFinal);
     return { ok: true, n: txs.length };

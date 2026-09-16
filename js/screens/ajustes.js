@@ -8,7 +8,7 @@ import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.j
 import { exportarCSV, exportarJSON, importarJSON, copiarParaIA } from '../export.js';
 import { ICONO_ETIQUETA, IconoCat } from '../iconos.js';
 
-const VERSION = '1.78';
+const VERSION = '1.79';
 
 export default function Ajustes() {
   const S = useStore();
@@ -247,7 +247,8 @@ function PanelDatos({ store: S, cerrar }) {
     <div class="tarjeta" style=${{ background: 'var(--accent-soft)', boxShadow: 'none' }}>
       <h3 style=${{ color: 'var(--accent)' }}>Copiar para IA</h3>
       <div class="dato-cuenta" style=${{ marginBottom: '8px' }}>
-        Copia al portapapeles un JSON con tu patrimonio y los movimientos recientes, listo para pegar en
+        Copia al portapapeles un JSON con tu patrimonio, los movimientos recientes y el contexto de pagos (cortes de tarjeta,
+        qué vence antes de tu próximo ingreso, fijos, cuotas, programados y proyección a 2 meses), listo para pegar en
         ChatGPT (u otra IA) con una instrucción de análisis incluida. No incluye comprobantes.
       </div>
       <div class="chips-scroll" style=${{ marginBottom: '8px' }}>
