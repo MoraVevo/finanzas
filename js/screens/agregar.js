@@ -5,7 +5,7 @@
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast, getState } from '../store.js';
-import { convertir, categoriasFrecuentes, motivosRecientes, saldoCuenta } from '../model.js';
+import { convertir, categoriasFrecuentes, motivosRecientes, saldoCuenta, efectoTx } from '../model.js';
 import { Teclado, PickerCuentas, GridCategorias, InputEtiquetas, SelectorFecha, Comprobantes, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_BASURA } from '../iconos.js';
 import { uid, isoLocal, textoAEntero, fmtConMoneda, monedaInfo, comprimirImagen } from '../util.js';
@@ -131,6 +131,19 @@ export default function Agregar({ txId }) {
       fecha: d.fecha, adjuntos: [...d.existentes.map(a => a.id), ...d.nuevas.map(a => a.id)],
       eliminada: false, updatedAt: new Date().toISOString()
     });
+    // Una cuenta de débito no puede quedar en negativo: la transferencia se
+    // bloquea si el dinero no alcanza. Tarjetas y deudas sí pueden quedarlo
+    // (es su naturaleza) y las de terceros tampoco se bloquean: lo que
+    // devuelven por encima de lo depositado se cuenta como ingreso.
+    if (d.tipo === 'transferencia' && ['efectivo', 'bancaria', 'ahorro'].includes(cuentaObj.tipo)) {
+      const disponible = saldoCuenta(cuentaObj, txs, S.tasas)
+        - (d.editando ? efectoTx(d.editando, cuentaObj.id, S.tasas, cuentaObj.moneda) : 0);
+      const queda = disponible + efectoTx(tx, cuentaObj.id, S.tasas, cuentaObj.moneda);
+      if (queda < 0) {
+        alert(`No se puede guardar: ${cuentaObj.nombre} tiene ${fmtConMoneda(disponible, cuentaObj.moneda)} disponibles y la transferencia es de ${fmtConMoneda(entero, monedaFinal)} (faltan ${fmtConMoneda(-queda, cuentaObj.moneda)}).\n\nSi tu banco muestra más dinero, registra el ingreso que falta o corrige el saldo inicial en Cuentas.`);
+        return;
+      }
+    }
     for (const n of d.nuevas) await fin.agregarAdjunto(tx.id, n.blob);
     if (d.editando) {
       for (const idAnterior of d.editando.adjuntos || []) {

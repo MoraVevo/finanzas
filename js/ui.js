@@ -208,14 +208,29 @@ export function Segmentado({ opciones, valor, onChange, onArrastre, onFin }) {
   </div>`;
 }
 
-/* ---------- Fila de transacción (listas) ---------- */
-export function FilaTx({ tx, cuentas, categorias, onClick }) {
+/* ---------- Fila de transacción (listas) ----------
+   `perspectiva` (id de cuenta) cambia cómo se lee una transferencia cuando la
+   lista ya está enfocada en una cuenta: lo que sale de ella es rojo, lo que
+   entra es verde. Sin perspectiva solo se colorea lo que cruza la frontera de
+   tu patrimonio (terceros); entre tus propias cuentas el dinero sigue siendo
+   tuyo y se mantiene azul con flecha. */
+export function FilaTx({ tx, cuentas, categorias, onClick, perspectiva = null }) {
   const cta = cuentas.find(c => c.id === tx.cuenta);
   const cat = categorias.find(c => c.id === tx.categoria);
   const destino = tx.cuentaDestino ? cuentas.find(c => c.id === tx.cuentaDestino) : null;
   const esPagoDeuda = tx.tipo === 'transferencia' && destino && (destino.tipo === 'tarjeta' || destino.tipo === 'deuda');
-  const clase = tx.tipo === 'gasto' ? 'm-gasto' : tx.tipo === 'ingreso' ? 'm-ingreso' : 'm-transf';
-  const signo = tx.tipo === 'gasto' ? '−' : tx.tipo === 'ingreso' ? '+' : '→ ';
+  let clase = tx.tipo === 'gasto' ? 'm-gasto' : tx.tipo === 'ingreso' ? 'm-ingreso' : 'm-transf';
+  let signo = tx.tipo === 'gasto' ? '−' : tx.tipo === 'ingreso' ? '+' : '→ ';
+  if (tx.tipo === 'transferencia') {
+    const saleATercero = destino?.tipo === 'tercero' && cta?.tipo !== 'tercero';
+    const vieneDeTercero = cta?.tipo === 'tercero' && destino?.tipo !== 'tercero';
+    if (perspectiva) {
+      const sale = tx.cuenta === perspectiva;
+      clase = sale ? 'm-gasto' : 'm-ingreso';
+      signo = sale ? '−' : '+';
+    } else if (saleATercero) { clase = 'm-gasto'; signo = '−'; }
+    else if (vieneDeTercero) { clase = 'm-ingreso'; signo = '+'; }
+  }
   // El emoji vive SOLO en el ícono de la fila: títulos y subtítulos van limpios.
   const titulo = tx.tipo === 'transferencia'
     ? (esPagoDeuda ? `Pago de deuda · ${destino?.nombre || '?'}` : `${cta?.nombre || '?'} → ${destino?.nombre || '?'}`)

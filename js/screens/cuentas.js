@@ -172,7 +172,7 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
     <div class="tarjeta" style=${{ paddingTop: '4px' }}>
       <h3>Últimos movimientos</h3>
       ${movs.map(tx => html`<${FilaTx} key=${tx.id} tx=${tx} cuentas=${S.cuentas} categorias=${S.categorias}
-        onClick=${() => nav('#/agregar?id=' + tx.id)} />`)}
+        perspectiva=${cuenta.id} onClick=${() => nav('#/agregar?id=' + tx.id)} />`)}
       ${movs.length === 0 && html`<div class="vacio">Sin movimientos.</div>`}
     </div>
   </div>`;

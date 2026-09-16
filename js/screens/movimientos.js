@@ -115,7 +115,7 @@ export default function Movimientos() {
         </span>
       </div>
       ${g.txs.map(tx => html`<${FilaTx} key=${tx.id} tx=${tx} cuentas=${S.cuentas} categorias=${S.categorias}
-        onClick=${() => nav('#/agregar?id=' + tx.id)} />`)}
+        perspectiva=${filtro.cuenta} onClick=${() => nav('#/agregar?id=' + tx.id)} />`)}
     </div>`)}
 
     ${grupos.length === 0 && html`<div class="vacio">Sin movimientos${hayFiltros ? ' con estos filtros' : ' este mes'}.</div>`}

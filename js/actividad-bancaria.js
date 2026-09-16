@@ -1,14 +1,18 @@
 import { html, useState } from '../vendor/preact-standalone.module.js';
 import { actividadCuenta } from './actividad-cuenta.js';
+import { nav } from './store.js';
+import { IconoCat } from './iconos.js';
 import { fmtConMoneda, fmtCompacto, fmtMesLargo, monedaInfo } from './util.js';
 
 const fechaCorta = fecha => `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}/${fecha.slice(2, 4)}`;
 
-export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], desde, hasta }) {
+export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], categorias = [], desde, hasta }) {
   const a = actividadCuenta({ cuenta, txs, tasas, desde, hasta });
   const moneda = cuenta.moneda, fmt = n => fmtConMoneda(n, moneda);
   const max = Math.max(1, ...a.periodos.flatMap(p => [p.entra, p.sale]));
+  const maxCat = Math.max(1, ...a.gastosPorCategoria.map(c => c.monto));
   const nombre = id => cuentas.find(c => c.id === id)?.nombre || 'Cuenta no disponible';
+  const catPorId = new Map(categorias.map(c => [c.id, c]));
   const periodo = p => a.granularidad === 'mes' ? fmtMesLargo(p.desde.slice(0, 7))
     : a.granularidad === 'año' ? p.desde.slice(0, 4)
     : p.desde === p.hasta ? fechaCorta(p.desde) : `${fechaCorta(p.desde)} – ${fechaCorta(p.hasta)}`;
@@ -44,6 +48,19 @@ export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], de
           <div class="ab-pista" aria-hidden="true"><div style=${{ width: val / max * 100 + '%', background: color }}></div></div>`)}
       </div>`)}
     </div>
+    ${a.gastosPorCategoria.length > 0 && html`<div class="tarjeta">
+      <h3>Gastos del período</h3>
+      <p class="ab-nota">Solo lo gastado desde esta cuenta: las transferencias no cuentan aquí.</p>
+      ${a.gastosPorCategoria.map(c => html`<div key=${c.categoria || '_sin'} class="barra-fila">
+        <div class="info">
+          <span>${c.categoria
+            ? html`<${IconoCat} icono=${catPorId.get(c.categoria)?.icono} emoji=${catPorId.get(c.categoria)?.emoji} /> ${catPorId.get(c.categoria)?.nombre || 'Categoría'}`
+            : 'Sin categoría'}</span>
+          <span class="num">${fmt(c.monto)} · ${Math.round(c.monto / a.gastos * 100)}%</span>
+        </div>
+        <div class="pista"><div class="lleno" style=${{ width: (c.monto / maxCat * 100) + '%', background: 'var(--gasto)' }}></div></div>
+      </div>`)}
+    </div>`}
     ${a.serie.length > 0 && html`<div class="tarjeta">
       <h3>Evolución del saldo</h3>
       <dl class="ab-desglose">
@@ -53,7 +70,46 @@ export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], de
       <${SaldoDiario} key=${cuenta.id + desde + hasta} datos=${a.serie} moneda=${moneda} />
       <p class="ab-nota">Saldo reconstruido con el saldo inicial y los movimientos registrados. No incluye movimientos programados. Cambiar el saldo inicial modifica este historial.</p>
     </div>`}
+    ${a.estado.length > 0 && html`<div class="tarjeta">
+      <h3>Estado de cuenta</h3>
+      <p class="ab-nota">Fila por fila, del más reciente al más antiguo, con el saldo que quedó después de cada movimiento — para conciliar con tu banco. Toca uno para corregirlo.</p>
+      ${[...a.estado].reverse().map(({ tx, delta, balance }) => {
+        const contraparte = cuentas.find(c => c.id === (delta >= 0 ? tx.cuenta : tx.cuentaDestino));
+        return html`<${FilaEstado}
+          key=${tx.id} tx=${tx} delta=${delta} balance=${balance} moneda=${moneda}
+          nombreCuenta=${nombre} catPorId=${catPorId}
+          esPagoDeuda=${delta < 0 && !!contraparte && (contraparte.tipo === 'tarjeta' || contraparte.tipo === 'deuda')} />`;
+      })}
+      <div class="ab-estado-cierre"><span>Saldo al inicio del período</span><b class="num">${fmt(a.saldoInicial)}</b></div>
+    </div>`}
   </section>`;
+}
+
+/** Fila del estado de cuenta: concepto + monto con signo + saldo resultante.
+ *  Rojo salió, verde entró: es lo que uno espera leer en un banco. */
+function FilaEstado({ tx, delta, balance, moneda, nombreCuenta, catPorId, esPagoDeuda }) {
+  const entra = delta >= 0;
+  const cat = catPorId.get(tx.categoria);
+  let concepto, sub;
+  if (tx.tipo === 'transferencia') {
+    const contraparte = nombreCuenta(entra ? tx.cuenta : tx.cuentaDestino);
+    concepto = esPagoDeuda ? `Pago de deuda · ${contraparte}` : (entra ? `De ${contraparte}` : `A ${contraparte}`);
+    sub = esPagoDeuda ? 'Pago de deuda' : 'Transferencia';
+  } else {
+    concepto = tx.motivo || cat?.nombre || (tx.tipo === 'ingreso' ? 'Ingreso' : 'Gasto');
+    sub = tx.motivo && cat ? cat.nombre : null;
+  }
+  return html`<button class="ab-estado-fila" onClick=${() => nav('#/agregar?id=' + tx.id)}>
+    <span class="ab-estado-fecha num">${fechaCorta(tx.fecha)}</span>
+    <span class="ab-estado-cuerpo">
+      <span class="ab-estado-titulo">${concepto}</span>
+      ${sub && html`<span class="ab-estado-sub">${sub}</span>`}
+    </span>
+    <span class="ab-estado-montos">
+      <b class=${'num ' + (entra ? 'm-ingreso' : 'm-gasto')}>${entra ? '+' : '−'}${fmtConMoneda(Math.abs(delta), moneda)}</b>
+      <span class="ab-estado-saldo num">queda ${fmtConMoneda(balance, moneda)}</span>
+    </span>
+  </button>`;
 }
 
 function SaldoDiario({ datos, moneda }) {
