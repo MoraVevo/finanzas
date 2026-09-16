@@ -695,6 +695,66 @@ export function pagosTarjeta(c, { txs, tasas, principal, fijos = [], cuotas = []
   });
 }
 
+/** Deudas por pagar antes del próximo ingreso fijo: todo lo que ya sabes que
+ *  vas a desembolsar desde mañana hasta el día en que vuelve a entrar tu
+ *  ingreso fijo — la factura inmediata que tu dinero actual tiene que cubrir.
+ *  Cuenta gastos fijos con fuente líquida, cuotas, gastos y pagos de deuda
+ *  programados como futuros, y la factura estimada de cada tarjeta cuyo pago
+ *  vence en la ventana sin que haya un pago ya programado (no doble conteo).
+ *  Sin ingreso fijo registrado usa los próximos 30 días. Puro. */
+export function deudasAntesDeIngreso({ cuentas = [], txs = [], tasas = [], principal, futuros = [], fijos = [], cuotas = [], hoyD = isoDia() }) {
+  const manana = isoDia(new Date(Date.parse(hoyD + 'T12:00') + 86400000));
+  const horizonte = `${+hoyD.slice(0, 4) + 1}-${hoyD.slice(5, 7)}-${hoyD.slice(8, 10)}`;
+  const esPasiva = c => !!c && (c.tipo === 'tarjeta' || c.tipo === 'deuda');
+  let limite = null;
+  for (const r of fijos.filter(f => f.activa !== false && f.tipo === 'ingreso')) {
+    const f0 = fechasFijo(r, manana, horizonte)[0];
+    if (f0 && (!limite || f0 < limite)) limite = f0;
+  }
+  const sinIngresoFijo = !limite;
+  if (sinIngresoFijo) limite = isoDia(new Date(Date.parse(hoyD + 'T12:00') + 30 * 86400000));
+  let total = 0;
+  // gastos fijos que salen del líquido; los cargados a tarjeta/deuda ya viven
+  // dentro de la factura estimada de esa cuenta (último bloque)
+  for (const r of fijos.filter(f => f.activa !== false && f.tipo === 'gasto' && f.fuente)) {
+    if (esPasiva(cuentas.find(c => c.id === r.fuente))) continue;
+    for (const fecha of fechasFijo(r, manana, horizonte)) {
+      if (fecha >= limite) break;
+      total += convertir(r.monto, r.moneda, principal, tasas, fecha);
+    }
+  }
+  // cuotas: siempre salen de la cuenta de pago que eligió el usuario
+  for (const p of cuotas.filter(p => p.activa !== false && p.cuentaId)) {
+    for (const o of pagosCuota(p, manana, horizonte)) {
+      if (o.fecha >= limite) break;
+      total += convertir(o.monto, p.moneda, principal, tasas, o.fecha);
+    }
+  }
+  // futuros: gastos y transferencias que pagan una deuda (mover dinero entre
+  // cuentas propias no es un compromiso). Marca las tarjetas ya programadas.
+  const pagadoPor = new Set();
+  for (const f of futuros) {
+    if (f.tipo === 'transferencia' && f.fecha >= manana && f.fecha < limite) {
+      const destino = cuentas.find(c => c.id === f.cuentaDestino);
+      if (esPasiva(destino)) pagadoPor.add(destino.id);
+    }
+  }
+  for (const f of futuros) {
+    if (f.fecha < manana || f.fecha >= limite) continue;
+    if (f.tipo === 'gasto') total += convertir(f.monto, f.moneda, principal, tasas, f.fecha);
+    else if (f.tipo === 'transferencia' && esPasiva(cuentas.find(c => c.id === f.cuentaDestino))) {
+      total += convertir(f.monto, f.moneda, principal, tasas, f.fecha);
+    }
+  }
+  // tarjetas/deudas con pago dentro de la ventana y sin pago programado:
+  // la factura estimada de su ciclo (pagosTarjeta ya devuelve montos en principal)
+  for (const c of cuentas.filter(c => esPasiva(c) && c.pagoDia && !pagadoPor.has(c.id))) {
+    const pago = pagosTarjeta(c, { txs, tasas, principal, fijos, cuotas, n: 1, hoyD })[0];
+    if (pago && pago.fecha >= hoyD && pago.fecha < limite && pago.montoP > 0) total += pago.montoP;
+  }
+  return { total: Math.round(total), limite, sinIngresoFijo };
+}
+
 /**
  * Poder adquisitivo teórico: parte del dinero líquido de hoy (sin contar
  * tarjetas ni deudas — una deuda no impide pagar) y camina el calendario

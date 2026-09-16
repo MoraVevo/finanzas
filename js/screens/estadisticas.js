@@ -6,7 +6,7 @@
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
-import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas } from '../model.js';
+import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas, deudasAntesDeIngreso } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
 import { IconoCuenta, IconoCategoria, IconoCat, IconoId, ICONO_ETIQUETA, ICONO_TRANSFER, ICONO_TARJETA } from '../iconos.js';
 import ActividadBancaria, { EstadoTarjeta } from '../actividad-bancaria.js';
@@ -289,6 +289,12 @@ function VistaRango({ S, todo }) {
   const est = estructuraRango(desde, hasta, txs, S);
   const tend = tendencia(txs, S, 12);
   const p = patrimonio(S.cuentas, todo, S.tasas, principal);
+  // lo que vence antes del próximo ingreso fijo: le dice de un vistazo si el
+  // dinero actual alcanza para lo inmediato
+  const deudas = deudasAntesDeIngreso({
+    cuentas: S.cuentas, txs: todo, tasas: S.tasas, principal,
+    futuros: S.futuros, fijos: S.fijos, cuotas: S.cuotas,
+  });
   const presup = new Map(S.presupuestos.map(x => [x.categoria, x.monto]));
   const maxCat = Math.max(1, ...st.porCategoria.map(c => c.monto));
   const maxTend = Math.max(1, ...tend.map(m => Math.max(m.gasto, m.ingreso)));
@@ -404,7 +410,11 @@ function VistaRango({ S, todo }) {
       <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
       <div class="stat-box"><div class="etq">Ingreso</div><div class="val m-ingreso">${fmtFicha(st.ingreso)}</div>
         ${st.deTerceros > 0 && html`<div class="etq" style=${{ marginTop: '2px' }}>incluye ${fmtFicha(st.deTerceros)} de terceros</div>`}</div>
-      <div class="stat-box"><div class="etq">Neto</div><div class="val" style=${{ color: st.neto >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${st.neto >= 0 ? '+' : '−'}${fmtFicha(Math.abs(st.neto))}</div></div>
+      <div class="stat-box"><div class="etq">Deudas por pagar</div>
+        <div class="val" style=${{ color: deudas.total > 0 ? 'var(--gasto)' : 'var(--muted)' }}>${fmtFicha(deudas.total)}</div>
+        <div class="etq" style=${{ marginTop: '2px' }}>${deudas.sinIngresoFijo
+          ? 'en los próximos 30 días'
+          : `antes de tu ingreso del ${fmtDiaMes(deudas.limite)}`}</div></div>
     </div>
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">${ahorro3 >= 0 ? 'Ahorro' : 'Desahorro'}</div>
