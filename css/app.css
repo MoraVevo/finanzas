@@ -375,6 +375,13 @@ svg.icono-ui { width: 15px; height: 15px; vertical-align: -2.5px; }
   display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 10px 0 2px;
   border-top: 1px solid var(--line); font-size: 12px; color: var(--muted);
 }
+.ab-estado-encabezado { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.ab-estado-encabezado h3 { margin-bottom: 0; flex-shrink: 0; }
+.ab-mes {
+  font: inherit; font-size: 12.5px; font-weight: 700; color: var(--accent);
+  background: var(--chip); border: 0; border-radius: 999px;
+  padding: 6px 12px; max-width: 60%; cursor: pointer; touch-action: manipulation;
+}
 
 /* Gráfica de flujo interactiva: 1 dedo desplaza (vertical = scroll de página), pellizco = zoom */
 .flujo-chart { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: grab; }

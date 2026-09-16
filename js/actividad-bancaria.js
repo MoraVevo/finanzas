@@ -2,11 +2,11 @@ import { html, useState } from '../vendor/preact-standalone.module.js';
 import { actividadCuenta } from './actividad-cuenta.js';
 import { nav } from './store.js';
 import { IconoCat } from './iconos.js';
-import { fmtConMoneda, fmtCompacto, fmtMesLargo, monedaInfo } from './util.js';
+import { fmtConMoneda, fmtCompacto, fmtMesLargo, monedaInfo, rangoMes, sumarMesClave, claveMesActual } from './util.js';
 
 const fechaCorta = fecha => `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}/${fecha.slice(2, 4)}`;
 
-export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], categorias = [], desde, hasta }) {
+export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], categorias = [], desde, hasta, onFiltro = null }) {
   const a = actividadCuenta({ cuenta, txs, tasas, desde, hasta });
   const moneda = cuenta.moneda, fmt = n => fmtConMoneda(n, moneda);
   const max = Math.max(1, ...a.periodos.flatMap(p => [p.entra, p.sale]));
@@ -71,7 +71,7 @@ export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], ca
       <p class="ab-nota">Saldo reconstruido con el saldo inicial y los movimientos registrados. No incluye movimientos programados. Cambiar el saldo inicial modifica este historial.</p>
     </div>`}
     ${a.estado.length > 0 && html`<div class="tarjeta">
-      <h3>Estado de cuenta</h3>
+      <${EncabezadoEstado} desde=${desde} hasta=${hasta} onFiltro=${onFiltro} txs=${txs} cuenta=${cuenta} />
       <p class="ab-nota">Fila por fila, del más reciente al más antiguo, con el saldo que quedó después de cada movimiento — para conciliar con tu banco. Toca uno para corregirlo.</p>
       ${[...a.estado].reverse().map(({ tx, delta, balance }) => {
         const contraparte = cuentas.find(c => c.id === (delta >= 0 ? tx.cuenta : tx.cuentaDestino));
@@ -83,6 +83,41 @@ export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], ca
       <div class="ab-estado-cierre"><span>Saldo al inicio del período</span><b class="num">${fmt(a.saldoInicial)}</b></div>
     </div>`}
   </section>`;
+}
+
+/** Encabezado del estado de cuenta con el menú de meses: elegir uno cambia el
+ *  período de TODA la vista (métricas, gráficas y filas) a ese mes, igual que
+ *  pides el estado de un mes a tu banco. La lista arranca en el primer
+ *  movimiento de la cuenta — antes de eso no hay nada que conciliar. */
+function EncabezadoEstado({ desde, hasta, onFiltro, txs, cuenta }) {
+  if (!onFiltro) return html`<h3>Estado de cuenta</h3>`;
+  const actual = claveMesActual();
+  const primerMes = txs.reduce((m, t) => {
+    if (t.cuenta !== cuenta.id && t.cuentaDestino !== cuenta.id) return m;
+    const d = t.fecha.slice(0, 7);
+    return (!m || d < m) ? d : m;
+  }, null);
+  const meses = [];
+  for (let c = (primerMes && primerMes < actual) ? primerMes : actual; c <= actual; c = sumarMesClave(c, 1)) meses.push(c);
+  // el período es un solo mes natural cuando arranca el 1 y termina el 1 siguiente
+  const claveDesde = desde.slice(0, 7);
+  const esMesUnico = desde.slice(8, 10) === '01' && rangoMes(claveDesde)[1] === hasta;
+  const mesSel = esMesUnico ? claveDesde : '';
+  const etiqueta = c => {
+    const t = fmtMesLargo(c);
+    return t.includes(c.slice(0, 4)) ? t : `${t} ${c.slice(0, 4)}`;
+  };
+  const elegir = clave => {
+    if (clave) onFiltro(rangoMes(clave));
+  };
+  return html`<div class="ab-estado-encabezado">
+    <h3>Estado de cuenta</h3>
+    <select class="ab-mes" value=${mesSel} aria-label="Mes del estado de cuenta"
+      onChange=${e => elegir(e.target.value)}>
+      ${!mesSel && html`<option value="">Elige un mes</option>`}
+      ${[...meses].reverse().map(c => html`<option key=${c} value=${c}>${etiqueta(c)}</option>`)}
+    </select>
+  </div>`;
 }
 
 /** Fila del estado de cuenta: concepto + monto con signo + saldo resultante.

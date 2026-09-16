@@ -347,7 +347,8 @@ function VistaRango({ S, todo }) {
     <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
     <${SelectorCuentas} S=${S} todo=${todo} cuentaScope=${cuentaScope} setCuentaScope=${setCuentaScope} />
     <${ActividadBancaria} cuenta=${cuentaObj} txs=${todo} tasas=${S.tasas}
-      cuentas=${S.cuentas} categorias=${S.categorias} desde=${desde} hasta=${hasta} />
+      cuentas=${S.cuentas} categorias=${S.categorias} desde=${desde} hasta=${hasta}
+      onFiltro=${setFiltro} />
   </div>`;
 
   return html`<div>
