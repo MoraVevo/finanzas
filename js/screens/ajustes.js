@@ -5,10 +5,10 @@ import fin from '../db.js';
 import { useStore, recargar, toast, nav } from '../store.js';
 import { Sheet, SelectorMoneda, IconoPicker, Segmentado } from '../ui.js';
 import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.js';
-import { exportarCSV, exportarJSON, importarJSON, copiarParaIA } from '../export.js';
+import { exportarCSV, exportarJSON, importarJSON, copiarParaIA, copiarRespaldoJSON } from '../export.js';
 import { ICONO_ETIQUETA, IconoCat } from '../iconos.js';
 
-const VERSION = '1.79';
+const VERSION = '1.80';
 
 export default function Ajustes() {
   const S = useStore();
@@ -204,6 +204,7 @@ function PanelDatos({ store: S, cerrar }) {
   const [mesesIA, setMesesIA] = useState(3);
   const [stats, setStats] = useState(null);
   const [textoIA, setTextoIA] = useState(null);
+  const [textoRespaldo, setTextoRespaldo] = useState(null);
   const archivo = useRef();
 
   useEffect(() => {
@@ -239,10 +240,28 @@ function PanelDatos({ store: S, cerrar }) {
       <button class="btn btn-suave" disabled=${ocupado} onClick=${async () => { setOcupado(true); try { await exportarJSON({ incluirImagenes: true }); } catch (e) { toast('Error: ' + e.message); } setOcupado(false); }}>
         Con comprobantes
       </button>
+      <button class="btn btn-suave" disabled=${ocupado} onClick=${async () => {
+        setOcupado(true);
+        try {
+          const r = await copiarRespaldoJSON();
+          if (r.ok) toast('✓ Respaldo copiado como texto. Pégalo donde quieras.');
+          else setTextoRespaldo(r.texto);
+        } catch (e) { toast('Error: ' + e.message); }
+        setOcupado(false);
+      }}>
+        Copiar JSON
+      </button>
     </div>
     <div class="dato-cuenta" style=${{ margin: '6px 0 10px' }}>
       El respaldo completo incluye todo (cuentas, categorías, movimientos, ajustes) y sirve para restaurar o mudar de dispositivo.
+      "Copiar JSON" lleva el respaldo (sin comprobantes) directo al portapapeles: en iPhone la hoja de compartir un archivo
+      solo pega el nombre al copiarlo, así que usa este botón para pegar el contenido completo.
     </div>
+    ${textoRespaldo && html`<div style=${{ margin: '-2px 0 10px' }}>
+      <div class="dato-cuenta">No se pudo usar el portapapeles aquí. Copia manualmente el texto de abajo:</div>
+      <textarea rows="8" style=${{ fontSize: '11px', fontFamily: 'monospace', marginTop: '6px' }} readonly
+        onClick=${e => e.target.select()}>${textoRespaldo}</textarea>
+    <//>`}
 
     <div class="tarjeta" style=${{ background: 'var(--accent-soft)', boxShadow: 'none' }}>
       <h3 style=${{ color: 'var(--accent)' }}>Copiar para IA</h3>

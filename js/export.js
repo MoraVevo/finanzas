@@ -55,10 +55,12 @@ export async function exportarCSV({ tasas, principal, cuentas, categorias }) {
 }
 
 /* ---------- JSON completo (respaldo / importación) ---------- */
-export async function exportarJSON({ incluirImagenes }) {
-  const [cuentas, transacciones, categorias, etiquetas, presupuestos, tasas, futuros, fijos, cuotas, ajustes, adjuntos] = await Promise.all([
+
+/** Arma el objeto completo del respaldo (tablas + contexto derivado). */
+async function armarRespaldo() {
+  const [cuentas, transacciones, categorias, etiquetas, presupuestos, tasas, futuros, fijos, cuotas, ajustes] = await Promise.all([
     fin.cuentas(), db2().transacciones.toArray(), fin.categorias(), fin.etiquetas(),
-    fin.presupuestos(), fin.tasas(), fin.futuros(), fin.fijos(), fin.cuotas(), db2().ajustes.toArray(), db2().adjuntos.toArray()
+    fin.presupuestos(), fin.tasas(), fin.futuros(), fin.fijos(), fin.cuotas(), db2().ajustes.toArray()
   ]);
   const data = {
     formato: 'finanzas-backup', version: 2, exportadoEn: new Date().toISOString(),
@@ -72,6 +74,11 @@ export async function exportarJSON({ incluirImagenes }) {
     cuentas, txs: transacciones.filter(t => !t.eliminada), tasas,
     principal: ajustesApp.monedaPrincipal || 'GTQ', futuros, fijos, cuotas,
   });
+  return { data, adjuntos: await db2().adjuntos.toArray() };
+}
+
+export async function exportarJSON({ incluirImagenes }) {
+  const { data, adjuntos } = await armarRespaldo();
   if (incluirImagenes) {
     data.adjuntos = await Promise.all(adjuntos.map(async a => ({
       ...a, blob: undefined, data: await blobAB64(a.blob)
@@ -81,6 +88,21 @@ export async function exportarJSON({ incluirImagenes }) {
     `finanzas-respaldo-${isoLocal().slice(0, 10)}${incluirImagenes ? '-completo' : ''}.json`,
     new Blob([JSON.stringify(data)], { type: 'application/json' })
   );
+}
+
+/** Copia el respaldo JSON como TEXTO al portapapeles — en iOS la hoja de
+ *  compartir "Copia" un archivo solo pega su nombre; el texto sí se pega
+ *  completo en cualquier parte (notas, chat, una IA). Sin comprobantes:
+ *  el base64 multiplicaría el tamaño y el portapapeles podría truncarlo. */
+export async function copiarRespaldoJSON() {
+  const { data } = await armarRespaldo();
+  const texto = JSON.stringify(data, null, 1);
+  try {
+    await navigator.clipboard.writeText(texto);
+    return { ok: true };
+  } catch {
+    return { ok: false, texto };
+  }
 }
 const db2 = () => fin._db(); // accessor interno, definido abajo
 
