@@ -2,9 +2,92 @@ import { html, useState } from '../vendor/preact-standalone.module.js';
 import { actividadCuenta } from './actividad-cuenta.js';
 import { nav } from './store.js';
 import { IconoCat } from './iconos.js';
-import { fmtConMoneda, fmtCompacto, fmtMesLargo, monedaInfo, rangoMes, sumarMesClave, claveMesActual } from './util.js';
+import { fmtConMoneda, fmtCompacto, fmtMesLargo, monedaInfo, rangoMes, sumarMesClave, claveMesActual, isoDia } from './util.js';
 
 const fechaCorta = fecha => `${fecha.slice(8, 10)}/${fecha.slice(5, 7)}/${fecha.slice(2, 4)}`;
+const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const p2 = n => String(n).padStart(2, '0');
+
+/** Ciclos de facturación de una tarjeta: ventanas [inicio, fin) que arrancan en
+ *  el día de corte y terminan el día antes del siguiente corte. Del ciclo que
+ *  contiene el primer movimiento al ciclo abierto de hoy — lo mismo que el
+ *  banco llama "estado del ciclo". */
+export function ciclosTarjeta(cuenta, txs, hoyD = isoDia()) {
+  const corteDia = Math.max(1, Math.min(28, parseInt(cuenta.corte, 10) || 1));
+  const diasMes = (y, m) => new Date(y, m, 0).getDate();
+  const corteISO = (y, m) => {
+    const d = Math.min(corteDia, diasMes(y, m));
+    return `${y}-${p2(m)}-${p2(d)}T00:00`;
+  };
+  const inicioDe = fecha => {
+    const d = new Date(fecha.slice(0, 10) + 'T12:00');
+    const corteEsteMes = Math.min(corteDia, diasMes(d.getFullYear(), d.getMonth() + 1));
+    return d.getDate() >= corteEsteMes
+      ? corteISO(d.getFullYear(), d.getMonth() + 1)
+      : (() => { const m = d.getMonth() /* 0-based */; const [y2, m2] = m === 0 ? [d.getFullYear() - 1, 12] : [d.getFullYear(), m]; return corteISO(y2, m2); })();
+  };
+  const siguiente = iso => {
+    const d = new Date(iso);
+    return d.getMonth() === 11 ? corteISO(d.getFullYear() + 1, 1) : corteISO(d.getFullYear(), d.getMonth() + 2);
+  };
+  const primera = txs.reduce((m, t) => {
+    if (t.eliminada || (t.cuenta !== cuenta.id && t.cuentaDestino !== cuenta.id)) return m;
+    const f = t.fecha.slice(0, 10) + 'T00:00';
+    return (!m || f < m) ? f : m;
+  }, null);
+  if (!primera) return [];
+  const ultimo = inicioDe(hoyD);
+  const ciclos = [];
+  for (let c = inicioDe(primera); c <= ultimo; c = siguiente(c)) ciclos.push(c);
+  return ciclos.map((inicio, i) => ({
+    inicio,
+    fin: ciclos[i + 1] || siguiente(inicio),
+    abierto: i === ciclos.length - 1 && inicio === ultimo,
+  }));
+}
+
+/** Estado de cuenta de TARJETA por ciclo de facturación: cargos, abonos y la
+ *  deuda después de cada movimiento — para conciliar con el estado del banco. */
+export function EstadoTarjeta({ cuenta, txs, tasas, cuentas = [], categorias = [] }) {
+  const ciclos = ciclosTarjeta(cuenta, txs);
+  const [sel, setSel] = useState(null); // inicio del ciclo elegido; null = el abierto
+  if (!ciclos.length) return null;
+  const ciclo = ciclos.find(c => c.inicio === sel) || ciclos[ciclos.length - 1];
+  const a = actividadCuenta({ cuenta, txs, tasas, desde: ciclo.inicio, hasta: ciclo.fin });
+  const fmt = n => fmtConMoneda(n, cuenta.moneda);
+  const cargos = a.gastos + a.enviadas, abonos = a.ingresos + a.recibidas;
+  const catPorId = new Map(categorias.map(c => [c.id, c]));
+  const nombre = id => cuentas.find(c => c.id === id)?.nombre || 'Cuenta no disponible';
+  const etiqueta = c => {
+    const i = new Date(c.inicio), f = new Date(+new Date(c.fin) - 86400000);
+    const trozo = `${i.getDate()} ${MESES3[i.getMonth()]} – ${f.getDate()} ${MESES3[f.getMonth()]}`;
+    return c.abierto ? `${trozo} · en curso` : trozo;
+  };
+  return html`<div class="tarjeta">
+    <div class="ab-estado-encabezado">
+      <h3>Estado de cuenta</h3>
+      <select class="ab-mes" value=${ciclo.inicio} aria-label="Ciclo del estado de cuenta"
+        onChange=${e => setSel(e.target.value)}>
+        ${[...ciclos].reverse().map(c => html`<option key=${c.inicio} value=${c.inicio}>Ciclo ${etiqueta(c)}</option>`)}
+      </select>
+    </div>
+    <p class="ab-nota">Ciclo del corte día ${cuenta.corte}: lo que cargaste a la tarjeta y lo que abonaste, con la deuda después de cada movimiento — para conciliar con tu estado bancario. Toca una fila para corregirla.</p>
+    <dl class="ab-desglose">
+      <div><dt>Cargos del ciclo</dt><dd class="num m-gasto">${fmt(cargos)}</dd></div>
+      <div><dt>Abonos (pagos)</dt><dd class="num m-ingreso">${fmt(abonos)}</dd></div>
+      <div><dt>Deuda al cierre</dt><dd class="num">${fmt(Math.max(0, -a.saldoFinal))}</dd></div>
+    </dl>
+    ${[...a.estado].reverse().map(({ tx, delta, balance }) => {
+      const contraparte = cuentas.find(c => c.id === (delta >= 0 ? tx.cuenta : tx.cuentaDestino));
+      return html`<${FilaEstado}
+        key=${tx.id} tx=${tx} delta=${delta} balance=${balance} moneda=${cuenta.moneda}
+        nombreCuenta=${nombre} catPorId=${catPorId} modoSaldo="deuda"
+        esPagoDeuda=${delta < 0 && !!contraparte && (contraparte.tipo === 'tarjeta' || contraparte.tipo === 'deuda')} />`;
+    })}
+    ${a.estado.length === 0 && html`<p class="vacio">Sin movimientos en este ciclo.</p>`}
+    <div class="ab-estado-cierre"><span>Deuda al inicio del ciclo</span><b class="num">${fmt(Math.max(0, -a.saldoInicial))}</b></div>
+  </div>`;
+}
 
 export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], categorias = [], desde, hasta, onFiltro = null }) {
   const a = actividadCuenta({ cuenta, txs, tasas, desde, hasta });
@@ -121,8 +204,9 @@ function EncabezadoEstado({ desde, hasta, onFiltro, txs, cuenta }) {
 }
 
 /** Fila del estado de cuenta: concepto + monto con signo + saldo resultante.
- *  Rojo salió, verde entró: es lo que uno espera leer en un banco. */
-function FilaEstado({ tx, delta, balance, moneda, nombreCuenta, catPorId, esPagoDeuda }) {
+ *  Rojo salió, verde entró: es lo que uno espera leer en un banco. En tarjetas
+ *  (modoSaldo="deuda") la línea final lee la deuda acumulada, no el saldo. */
+function FilaEstado({ tx, delta, balance, moneda, nombreCuenta, catPorId, esPagoDeuda, modoSaldo = 'queda' }) {
   const entra = delta >= 0;
   const cat = catPorId.get(tx.categoria);
   let concepto, sub;
@@ -142,7 +226,9 @@ function FilaEstado({ tx, delta, balance, moneda, nombreCuenta, catPorId, esPago
     </span>
     <span class="ab-estado-montos">
       <b class=${'num ' + (entra ? 'm-ingreso' : 'm-gasto')}>${entra ? '+' : '−'}${fmtConMoneda(Math.abs(delta), moneda)}</b>
-      <span class="ab-estado-saldo num">queda ${fmtConMoneda(balance, moneda)}</span>
+      <span class="ab-estado-saldo num">${modoSaldo === 'deuda'
+        ? (balance < 0 ? `deuda ${fmtConMoneda(-balance, moneda)}` : `a favor ${fmtConMoneda(balance, moneda)}`)
+        : `queda ${fmtConMoneda(balance, moneda)}`}</span>
     </span>
   </button>`;
 }

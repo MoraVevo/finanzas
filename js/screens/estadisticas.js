@@ -9,7 +9,7 @@ import { useStore, recargar, toast } from '../store.js';
 import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
 import { IconoCuenta, IconoCategoria, IconoCat, IconoId, ICONO_ETIQUETA, ICONO_TRANSFER, ICONO_TARJETA } from '../iconos.js';
-import ActividadBancaria from '../actividad-bancaria.js';
+import ActividadBancaria, { EstadoTarjeta } from '../actividad-bancaria.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, fmtMesLargo, deISO, claveMesActual, sumarMesClave, rangoMes } from '../util.js';
 
 const MESES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -399,7 +399,10 @@ function VistaRango({ S, todo }) {
         <span class="dato-cuenta">Fecha corte: <b class="num" style=${{ color: 'var(--text)' }}>${cuentaObj.corte || '—'}</b></span>
         <span class="dato-cuenta">Fecha pago: <b class="num" style=${{ color: 'var(--accent)' }}>${cuentaObj.pagoDia || '—'}</b></span>
       </div>
-    </div>` : html`
+    </div>
+    ${cuentaObj.tipo === 'tarjeta' && cuentaObj.corte && html`<${EstadoTarjeta} key=${cuentaObj.id}
+      cuenta=${cuentaObj} txs=${todo} tasas=${S.tasas} cuentas=${S.cuentas} categorias=${S.categorias} />`}
+    ` : html`
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
       <div class="stat-box"><div class="etq">Ingreso</div><div class="val m-ingreso">${fmtFicha(st.ingreso)}</div>
