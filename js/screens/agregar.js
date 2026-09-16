@@ -42,9 +42,10 @@ export default function Agregar({ txId }) {
       } else {
         const ult = S.ajustes.ultimaCuenta || {};
         const activas = S.cuentas.filter(c => !c.archivada);
+        const propias = activas.filter(c => c.tipo !== 'tercero');
         setDatos({
           tipo: 'gasto', moneda: null, montoStr: '',
-          cuenta: activas.find(c => c.id === ult.gasto)?.id || activas[0]?.id || null,
+          cuenta: propias.find(c => c.id === ult.gasto)?.id || propias[0]?.id || null,
           destino: activas.find(c => c.id === ult.transferDestino)?.id || null,
           montoDestinoStr: '', categoria: null, etiquetas: [], motivo: '',
           fecha: isoLocal(), nuevas: [], existentes: [], editando: null
@@ -187,11 +188,14 @@ export default function Agregar({ txId }) {
   const cambiarTipo = t => {
     const activas = S.cuentas.filter(c => !c.archivada);
     const ult = S.ajustes.ultimaCuenta || {};
+    // en gasto/ingreso una cuenta de terceros no tiene sentido: lo suyo se
+    // mueve con transferencias — el default cae siempre en una cuenta propia
+    const candidatas = t === 'transferencia' ? activas : activas.filter(c => c.tipo !== 'tercero');
     set({
       tipo: t,
       cuenta: (t === 'transferencia'
         ? activas.find(c => c.id === ult.transferencia)
-        : activas.find(c => c.id === ult[t]))?.id || activas[0]?.id || null,
+        : candidatas.find(c => c.id === ult[t]))?.id || candidatas[0]?.id || null,
       destino: t === 'transferencia'
         ? (activas.find(c => c.id === ult.transferDestino)?.id || activas[1]?.id || null)
         : null,
@@ -206,7 +210,7 @@ export default function Agregar({ txId }) {
   // anclado al fondo de la página en vez de a la pantalla).
   return html`<div class="pantalla-agregar">
     <div class="pa-sup">
-      <div style=${{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style=${{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
         <button class="btn-icono" onClick=${() => nav(getState().routeAnterior || '#/')}>✕</button>
         ${datos.editando && html`<button class="btn-icono" aria-label="Eliminar transacción" style=${{ color: 'var(--gasto)' }} onClick=${eliminar}>${ICONO_BASURA}</button>`}
       </div>
@@ -311,6 +315,7 @@ export default function Agregar({ txId }) {
         : '¿Con qué cuenta?'}
       cuentas=${S.cuentas} txs=${txs} tasas=${S.tasas}
       excluir=${picker === 'cuenta' ? null : datos.cuenta}
+      sinTerceros=${datos.tipo !== 'transferencia' && picker === 'cuenta'}
       onPick=${c => {
         const p = picker === 'cuenta' ? { cuenta: c.id } : { destino: c.id };
         setPicker(null); set({ ...p, montoDestinoStr: '' });

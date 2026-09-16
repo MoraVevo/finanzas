@@ -252,13 +252,18 @@ export function FilaTx({ tx, cuentas, categorias, onClick, perspectiva = null })
   </div>`;
 }
 
-/* ---------- Selector de cuentas (sheet con datos de la cuenta) ---------- */
-export function PickerCuentas({ titulo = 'Elegir cuenta', cuentas, txs, tasas = [], onPick, onClose, excluir, sinSaldo = false }) {
+/* ---------- Selector de cuentas (sheet con datos de la cuenta) ----------
+   `sinTerceros`: para gastos e ingresos, donde una cuenta externa no tiene
+   sentido (lo de terceros se mueve con transferencias). Las de terceros que
+   sí aparecen (transferencias, filtros) van SIEMPRE al final: no son tuyas y
+   no deben robar el primer toque. */
+export function PickerCuentas({ titulo = 'Elegir cuenta', cuentas, txs, tasas = [], onPick, onClose, excluir, sinSaldo = false, sinTerceros = false }) {
   const [q, setQ] = useState('');
   const lista = cuentas
     .filter(c => !c.archivada && c.id !== excluir)
+    .filter(c => !sinTerceros || c.tipo !== 'tercero')
     .filter(c => !q || (c.nombre + ' ' + (c.banco || '') + ' ' + (c.numero || '')).toLowerCase().includes(q.toLowerCase()))
-    .sort((a, b) => (a.archivada ? 1 : 0) - (b.archivada ? 1 : 0) || a.nombre.localeCompare(b.nombre));
+    .sort((a, b) => (a.tipo === 'tercero' ? 1 : 0) - (b.tipo === 'tercero' ? 1 : 0) || a.nombre.localeCompare(b.nombre));
   return html`<${Sheet} titulo=${titulo} onClose=${onClose}>
     <input type="search" placeholder="Buscar por nombre, banco o número…" value=${q} onInput=${e => setQ(e.target.value)} />
     <div style=${{ marginTop: '8px' }}>
@@ -317,14 +322,16 @@ export const SelectorMoneda = ({ valor, onChange }) => html`
 /* ---------- Selector de fecha/hora ---------- */
 export function SelectorFecha({ valor, onChange }) {
   const esHoy = valor === isoLocal(), esHoy0 = valor === isoDia() + 'T00:00';
+  // "Ayer" se marca por día (no por hora exacta): si lo tocas a las 14:32 y
+  // vuelves a entrar a los minutos, sigue marcado — y una fecha de ayer
+  // escrita a mano también lo enciende, porque el movimiento ES de ayer.
+  const ayerISO = isoDia(new Date(Date.now() - 86400000));
+  const esAyer = valor.slice(0, 10) === ayerISO;
   return html`<div>
     <div class="chips-scroll">
       <button class=${'chip' + (esHoy ? ' sel' : '')} onClick=${() => onChange(isoLocal())}>Ahora</button>
       <button class=${'chip' + (esHoy0 ? ' sel' : '')} onClick=${() => onChange(isoDia() + 'T00:00')}>Hoy (sin hora)</button>
-      <button class="chip" onClick=${() => {
-        const ayer = new Date(); ayer.setDate(ayer.getDate() - 1);
-        onChange(isoLocal(ayer));
-      }}>Ayer</button>
+      <button class=${'chip' + (esAyer ? ' sel' : '')} onClick=${() => onChange(isoLocal(new Date(Date.now() - 86400000)))}>Ayer</button>
     </div>
     <input type="datetime-local" style=${{ marginTop: '8px' }} value=${valor.slice(0, 16)}
       onChange=${e => e.target.value && onChange(e.target.value)} />
