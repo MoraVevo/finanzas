@@ -243,15 +243,20 @@ svg.icono-ui { width: 15px; height: 15px; vertical-align: -2.5px; }
 .grid-cats .cat.sel { background: var(--accent); color: var(--on-accent); }
 .grid-cats .cat:active { transform: scale(.93); }
 
-/* Panel inferior fijo: monto + moneda + guardar + teclado, siempre visibles */
+/* Panel inferior fijo: monto + moneda + guardar + teclado, siempre visibles.
+   Buffer extra bajo el teclado: iOS a veces reporta safe-area-inset-bottom = 0
+   en standalone y la fila ".", 0, ⌫ caía dentro de la zona del home indicator. */
 .pa-inferior {
-  padding: 10px 12px calc(env(safe-area-inset-bottom, 0px) + 10px);
+  padding: 10px 12px calc(env(safe-area-inset-bottom, 0px) + 18px);
   background: var(--bg); border-top: 1px solid var(--line);
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -10px 30px -22px rgba(0, 0, 0, .55);
 }
 .pa-monto-fila { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 42px; flex-wrap: wrap; }
-.pa-monto { font-size: 34px; font-weight: 800; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+/* flex:1 estira el monto por toda la fila: tocar a la par del número (no solo
+   sobre su trazo) también abre el teclado — el hueco junto a los chips de
+   moneda ya no es zona muerta */
+.pa-monto { font-size: 34px; font-weight: 800; letter-spacing: -1px; font-variant-numeric: tabular-nums; flex: 1; min-height: 44px; }
 .pa-monto .simbolo { font-size: 21px; font-weight: 700; color: var(--muted); margin-right: 3px; }
 .pa-monedas { display: flex; gap: 6px; flex-shrink: 0; }
 .pa-monedas .chip { padding: 6px 13px; font-size: 13px; }
