@@ -313,6 +313,10 @@ svg.icono-ui { width: 15px; height: 15px; vertical-align: -2.5px; }
 .sheet .asa-zona:active { cursor: grabbing; }
 .sheet .asa { width: 44px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto; }
 .sheet h2 { margin: 2px 0 12px; font-size: 19px; font-weight: 800; }
+/* Pestañas dentro de una hoja: ambos paneles montados en la misma celda — la
+   hoja toma la altura del más alto y no salta al cambiar de pestaña. */
+.paneles-apilados { display: grid; }
+.paneles-apilados > div { grid-area: 1 / 1; min-width: 0; }
 @keyframes subir { from { transform: translateY(60px); opacity: .4; } }
 @keyframes fadeIn { from { opacity: 0; } }
 

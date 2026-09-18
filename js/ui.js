@@ -73,16 +73,20 @@ export function Sheet({ titulo, onClose, children }) {
 
   /* Cuerpo de la hoja: deslizar hacia abajo desde cualquier zona SIN elemento
      propio (inputs, botones, chips, teclado…) también la cierra — solo cuando
-     el contenido está en el tope y el gesto es claramente hacia abajo. */
+     el contenido está en el tope y el gesto es claramente hacia abajo.
+     Si la hoja no tiene nada que scrollear, el gesto entero se queda aquí
+     (preventDefault): sin esto, iOS lo manda al fondo y la página de atrás se
+     mueve a través del velo oscuro. */
   useEffect(() => {
     const sheet = sheetRef.current;
     if (!sheet || !onClose) return;
     const EXCLUYE = 'input, textarea, select, button, .chips-scroll, .grid-cats, .teclado, .asa-zona';
-    let activo = false, cerrando = false, decidido = false, cancelado = false, x0 = 0, y0 = 0;
+    let activo = false, cerrando = false, decidido = false, cancelado = false, sinScroll = false, x0 = 0, y0 = 0;
 
     const inicio = e => {
       cerrando = false;
-      if (e.touches.length !== 1 || sheet.scrollTop > 2 || e.target.closest?.(EXCLUYE)) { cancelado = true; return; }
+      sinScroll = sheet.scrollHeight <= sheet.clientHeight + 2;
+      if (e.touches.length !== 1 || (!sinScroll && sheet.scrollTop > 2) || e.target.closest?.(EXCLUYE)) { cancelado = true; return; }
       cancelado = false; decidido = false; activo = true;
       x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
     };
@@ -91,11 +95,13 @@ export function Sheet({ titulo, onClose, children }) {
       const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
       if (!decidido) {
         if (Math.abs(dy) < 12 && Math.abs(dx) < 12) return;
-        // solo un jalón claro hacia abajo cierra; hacia arriba o lateral es scroll
-        if (dy <= 0 || Math.abs(dx) > Math.abs(dy)) { cancelado = true; return; }
+        // solo un jalón claro hacia abajo cierra; hacia arriba o lateral es
+        // scroll… salvo que la hoja no tenga nada que scrollear: entonces el
+        // gesto muere aquí (preventDefault) y el fondo no se entera
+        if ((dy <= 0 || Math.abs(dx) > Math.abs(dy)) && !sinScroll) { cancelado = true; return; }
         decidido = true;
       }
-      if (e.cancelable) e.preventDefault(); // el dedo mueve la hoja, no el scroll
+      if (e.cancelable) e.preventDefault(); // el dedo mueve la hoja (o nada), nunca el fondo
       sheet.style.transition = 'none';
       sheet.style.transform = `translateY(${Math.max(0, dy)}px)`;
     };
@@ -118,6 +124,16 @@ export function Sheet({ titulo, onClose, children }) {
       sheet.removeEventListener('touchcancel', soltar);
     };
   }, [onClose]);
+
+  /* El velo oscuro alrededor de la hoja tampoco le pasa gestos al fondo:
+     deslizar sobre él no mueve la página de atrás. */
+  useEffect(() => {
+    const fondo = sheetRef.current?.parentElement;
+    if (!fondo) return;
+    const frenar = e => { if (e.target === fondo && e.cancelable) e.preventDefault(); };
+    fondo.addEventListener('touchmove', frenar, { passive: false });
+    return () => fondo.removeEventListener('touchmove', frenar);
+  }, []);
 
   return html`<div class="sheet-fondo" onClick=${e => e.target === e.currentTarget && onClose?.()}>
     <div class="sheet" ref=${sheetRef}>
