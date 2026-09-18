@@ -97,6 +97,11 @@ export function Sheet({ titulo, onClose, children }) {
     const mover = e => {
       if (!activo || cancelado || cerrando) return;
       const dx = e.touches[0].clientX - x0, dy = e.touches[0].clientY - y0;
+      // Hoja sin nada que scrollear: el gesto es nuestro desde el PRIMER píxel.
+      // Si solo frenáramos al decidir dirección (12px), iOS ya habría reclamado
+      // el toque para su scroll nativo y desde ahí los touchmove llegan no
+      // cancelables: la hoja seguiría al dedo, pero el fondo también se movería.
+      if (sinScroll && e.cancelable) e.preventDefault();
       if (!decidido) {
         if (Math.abs(dy) < 12 && Math.abs(dx) < 12) return;
         // solo un jalón claro hacia abajo cierra; hacia arriba o lateral es
