@@ -394,9 +394,11 @@ export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fi
       m++; if (m > 11) { m = 0; y++; }
     }
   }
-  // Cuotas: cada plan paga su mensualidad hasta agotarse. En patrimonio es
-  // neutra (sale del líquido y baja la deuda) y se lista para que se vea venir;
-  // en el alcance de esa tarjeta suma a su saldo (la deuda baja).
+  // Cuotas: cada plan paga su mensualidad hasta agotarse. Con débito es una
+  // transferencia (neutra en patrimonio; en el alcance de la tarjeta suma a su
+  // saldo, la deuda baja). Sin débito la cuota va a la factura: no mueve nada
+  // el día que vence (la deuda ya vive en el saldo por la compra registrada) —
+  // se lista para que se vea venir; el movimiento real es el pago de la tarjeta.
   for (const p of (cuotas || []).filter(p => p.activa !== false && p.cuentaId)) {
     const info = planCuotas(p);
     if (info.terminado) continue;
@@ -405,10 +407,10 @@ export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fi
     for (const o of pagosCuota(p, hoyD, hastaD)) {
       eventos.push({
         fecha: o.fecha,
-        delta: cuentaId ? o.monto : 0,
+        delta: cuentaId && p.pagaCon ? o.monto : 0,
         f: {
           id: 'cuota-' + p.id + '-' + o.k, esFijo: true, esCuota: true, cuotaK: o.k, cuotaN: info.n,
-          tipo: cuentaId ? 'ingreso' : 'transferencia',
+          tipo: cuentaId && p.pagaCon ? 'ingreso' : 'transferencia',
           nombre: 'Cuota ' + (p.nombre || 'plan'),
           monto: o.monto, moneda: p.moneda, fecha: o.fecha,
           fuenteNombre: cuentas.find(c => c.id === p.cuentaId)?.nombre || null,
@@ -632,9 +634,10 @@ export function cuotasPorMes(cuentaId, cuotas = [], tasas = [], principal, meses
 
 /** Próximos pagos de una tarjeta según su ciclo de corte: el primero cubre la
  *  factura que cerró en el corte previo (saldo real al cierre, menos el
- *  pendiente de cuotas que se amortiza con su plan, más los cargos fijos del
- *  ciclo); los siguientes proyectan cargos fijos y cuotas de su ciclo. Las
- *  entradas con monto 0 se conservan: "no hay nada programado" también informa. */
+ *  pendiente de cuotas — lo futuro la amortiza con su plan o aún no está
+ *  cobrado —, más los cargos fijos del ciclo); los siguientes proyectan cargos
+ *  fijos y cuotas sin débito de su ciclo. Las entradas con monto 0 se
+ *  conservan: "no hay nada programado" también informa. */
 export function pagosTarjeta(c, { txs, tasas, principal, fijos = [], cuotas = [], n = 2, hoyD = isoDia() }) {
   if (!c.pagoDia) return [];
   const ordenadas = [...txs].sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -685,9 +688,11 @@ export function pagosTarjeta(c, { txs, tasas, principal, fijos = [], cuotas = []
       if (ref && e.fecha > ref) continue;
       montoP += e.montoP;
     }
-    // ciclo posterior: además de los fijos, las cuotas cuyo vencimiento cae
-    // dentro del ciclo (el usuario piensa la factura como "fijos + cuotas")
-    for (const p of (cuotas || []).filter(p => p.activa !== false && p.cuentaId === c.id)) {
+    // ciclo posterior: además de los fijos, las cuotas SIN débito cuyo
+    // vencimiento cae dentro del ciclo (van en la factura — el usuario piensa
+    // la factura como "fijos + cuotas"; las que se descuentan de una cuenta
+    // se pagan solas con su transferencia, no aquí)
+    for (const p of (cuotas || []).filter(p => p.activa !== false && p.cuentaId === c.id && !p.pagaCon)) {
       for (const o of pagosCuota(p, refPrev || hoyD, ref || pago)) montoP += convertir(o.monto, p.moneda, principal, tasas, o.fecha);
     }
     refPrev = ref;
@@ -723,8 +728,10 @@ export function deudasAntesDeIngreso({ cuentas = [], txs = [], tasas = [], princ
       total += convertir(r.monto, r.moneda, principal, tasas, fecha);
     }
   }
-  // cuotas: siempre salen de la cuenta de pago que eligió el usuario
-  for (const p of cuotas.filter(p => p.activa !== false && p.cuentaId)) {
+  // cuotas con débito: salen de la cuenta de pago que eligió el usuario; las
+  // sin débito van dentro de la factura de su tarjeta (último bloque) — contar
+  // las dos veces sería doble
+  for (const p of cuotas.filter(p => p.activa !== false && p.pagaCon && p.cuentaId)) {
     for (const o of pagosCuota(p, manana, horizonte)) {
       if (o.fecha >= limite) break;
       total += convertir(o.monto, p.moneda, principal, tasas, o.fecha);
@@ -764,8 +771,10 @@ export function deudasAntesDeIngreso({ cuentas = [], txs = [], tasas = [], princ
  * deuda de esa cuenta el día del cargo (fila '+rojo'). Los pagos de tarjeta
  * cubren el ciclo que cierra en el corte previo a cada fecha de pago — el
  * pago paga el saldo completo al cierre (incluye deuda arrastrada) más los
- * fijos cargados a esa tarjeta dentro del ciclo, pero restando el pendiente
- * de las cuotas de esa tarjeta (esas se pagan mes a mes con su plan).
+ * fijos y las cuotas sin débito de ese ciclo, pero restando el pendiente de
+ * las cuotas (con débito se pagan mes a mes con su plan; sin él, aún no está
+ * cobrado). Las cuotas sin débito solo informan: el golpe al líquido lo da
+ * el pago de la tarjeta.
  */
 export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], cuotas = [], dias = 45 }) {
   const hoyD = isoDia();
@@ -812,16 +821,23 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], c
   }
   // Cuotas: cada plan activo paga su mensualidad hasta agotarse (finito por
   // diseño: la cuota n es la última y el plan desaparece de las proyecciones).
+  // Con débito la cuota sale del líquido el día que vence (transferencia).
+  // Sin débito va a la factura: solo informa — el golpe al líquido lo da el
+  // pago de la tarjeta, no el vencimiento.
   for (const p of (cuotas || []).filter(p => p.activa !== false && p.cuentaId)) {
     const info = planCuotas(p);
     if (info.terminado) continue;
+    const enDeuda = !p.pagaCon;
     for (const o of pagosCuota(p, hoyD, finD)) {
-      eventos.push({
-        fecha: o.fecha, tipo: 'gasto', esCuota: true, cuotaK: o.k, cuotaN: info.n,
-        fijoId: 'cuota-' + p.id,
-        nombre: 'Cuota ' + (p.nombre || 'plan'),
-        montoP: convertir(o.monto, p.moneda, principal, tasas, o.fecha), moneda: principal,
-      });
+      eventos.push(enDeuda
+        ? { fecha: o.fecha, tipo: 'deuda', esCuota: true, cuotaK: o.k, cuotaN: info.n,
+            fijoId: 'cuota-' + p.id, fuente: p.cuentaId,
+            nombre: 'Cuota ' + (p.nombre || 'plan'),
+            montoP: convertir(o.monto, p.moneda, principal, tasas, o.fecha), moneda: principal }
+        : { fecha: o.fecha, tipo: 'gasto', esCuota: true, cuotaK: o.k, cuotaN: info.n,
+            fijoId: 'cuota-' + p.id,
+            nombre: 'Cuota ' + (p.nombre || 'plan'),
+            montoP: convertir(o.monto, p.moneda, principal, tasas, o.fecha), moneda: principal });
     }
   }
   // Pagos de tarjeta: cada pago cubre la factura que cierra en el corte previo
@@ -847,19 +863,29 @@ export function poderAdquisitivo({ cuentas, txs, tasas, principal, fijos = [], c
     pagos.forEach((pago, i) => {
       const ref = cierres[i] || (i === 0 ? hoyD : pagos[0]);
       const refPrev = i === 0 ? null : (cierres[i - 1] || pagos[i - 1]);
-      // El pendiente de cuotas de esta tarjeta se amortiza mes a mes con su
-      // plan — se resta del saldo que el pago de ciclo cubriría para no
-      // contarlo dos veces.
+      // El pendiente de cuotas (con débito lo cubren sus transferencias; sin
+      // débito aún no está cobrado) se resta del saldo que el pago de ciclo
+      // cubriría para no contarlo dos veces. Con débito el saldo ya baja solo
+      // con cada transferencia; sin él, la factura queda con lo vencido al corte.
       const pendienteCuotas = (cuotas || []).filter(p => p.activa !== false && p.cuentaId === c.id)
         .reduce((s, p) => s + planCuotas(p, ref).pendiente, 0);
       let montoP = i === 0
         ? Math.max(0, -convertir(saldoEn(c, ref), c.moneda, principal, tasas, ref) - pendienteCuotas)
         : 0;
       for (const e of eventos) {
-        if (e.tipo !== 'deuda' || e.fuente !== c.id) continue;
+        if (e.tipo !== 'deuda' || e.esCuota || e.fuente !== c.id) continue;
         if (ref && e.fecha > ref) continue;
         if (refPrev && e.fecha <= refPrev) continue;
         montoP += e.montoP;
+      }
+      // ciclo posterior: además de los fijos, las cuotas SIN débito cuyo
+      // vencimiento cae dentro del ciclo van en esta factura
+      if (i > 0) {
+        for (const p of (cuotas || []).filter(p => p.activa !== false && p.cuentaId === c.id && !p.pagaCon)) {
+          for (const o of pagosCuota(p, refPrev || hoyD, ref || pago)) {
+            montoP += convertir(o.monto, p.moneda, principal, tasas, o.fecha);
+          }
+        }
       }
       if (montoP <= 0) return;
       eventos.push({ fecha: pago, tipo: 'gasto', fijoId: 'pago-' + c.id, fuente: c.id,

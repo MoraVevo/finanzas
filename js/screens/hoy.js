@@ -176,7 +176,9 @@ export default function Hoy() {
           <div class="cuerpo">
             <div class="titulo">${r.nombre}</div>
             <div class="sub">${esDeuda
-              ? `${fmtFecha(r.fecha)} · va a tu ${fuenteC ? (TIPOS_CUENTA[fuenteC.tipo].nombre.toLowerCase() + ' ' + fuenteC.nombre) : 'tarjeta'}`
+              ? (r.esCuota
+                ? `${fmtFecha(r.fecha)} · cuota ${r.cuotaK} de ${r.cuotaN} a tu ${fuenteC ? (TIPOS_CUENTA[fuenteC.tipo].nombre.toLowerCase() + ' ' + fuenteC.nombre) : 'tarjeta'} — va a la factura`
+                : `${fmtFecha(r.fecha)} · va a tu ${fuenteC ? (TIPOS_CUENTA[fuenteC.tipo].nombre.toLowerCase() + ' ' + fuenteC.nombre) : 'tarjeta'}`)
               : r.esCuota
                 ? `${fmtFecha(r.fecha)} · cuota ${r.cuotaK} de ${r.cuotaN}`
                 : html`${fmtFecha(r.fecha)} · quedaría <span class="num" style=${{ color: r.balanceDespues < 0 ? 'var(--gasto)' : 'inherit', fontWeight: r.balanceDespues < 0 ? 700 : 400 }}>${fmtConMoneda(r.balanceDespues, principal)}</span>`}</div>
@@ -243,17 +245,19 @@ function PanelCuotas({ S, nueva, cerrar }) {
     <div class="dato-cuenta" style=${{ marginBottom: '10px' }}>
       Compras financiadas o préstamos: cada mes se cobra la cuota hasta agotar el
       plan y desaparece solo. Registra la compra como gasto con la tarjeta para
-      que tu límite la refleje.
+      que tu límite la refleje. En una tarjeta de crédito la cuota va a la
+      factura y la pagas en su fecha de pago — sin cuenta de débito.
     </div>
     ${lista.map(p => {
       const info = planCuotas(p);
       const cta = S.cuentas.find(c => c.id === p.cuentaId);
+      const deb = p.pagaCon ? S.cuentas.find(c => c.id === p.pagaCon) : null;
       return html`<div key=${p.id} class="fila" onClick=${() => setEdit(p)}>
         <div class="cuerpo">
           <div class="titulo">${p.nombre || 'Cuotas'}${cta ? html` · <span class="sub" style=${{ display: 'inline' }}>${cta.nombre}</span>` : ''}</div>
           <div class="sub">${info.terminado ? '✓ completado'
             : info.vencidas === 0 ? `primera cuota: ${fmtFecha(info.proxima.fecha)}`
-            : `próxima: ${fmtFecha(info.proxima.fecha)} · cuota ${Math.min(info.vencidas + 1, info.n)} de ${info.n}`}</div>
+            : `próxima: ${fmtFecha(info.proxima.fecha)} · cuota ${Math.min(info.vencidas + 1, info.n)} de ${info.n}`}${info.terminado ? '' : deb ? ` · débito de ${deb.nombre}` : ' · a la factura'}</div>
           <div class="barra-fila" style=${{ margin: '7px 0 0' }}>
             <div class="pista"><div class="lleno" style=${{ width: Math.min(100, Math.round(info.pagado / p.montoTotal * 100)) + '%' }}></div></div>
           </div>
@@ -292,13 +296,12 @@ export function EditorCuota({ p, S, cerrar }) {
   const guardar = async () => {
     if (!montoTotal) { toast('Escribe el monto total financiado'); return; }
     if (!(n >= 1 && n <= 120)) { toast('Número de cuotas inválido (1-120)'); return; }
-    if (!d.cuentaId) { toast('Elige la tarjeta o crédito donde se paga'); return; }
-    if (!d.pagaCon) { toast('Elige la cuenta con que se paga cada mes'); return; }
+    if (!d.cuentaId) { toast('Elige la tarjeta o crédito donde se carga'); return; }
     await fin.guardarCuota({
       id: p.id || uid(), nombre: d.nombre.trim() || null, cuentaId: d.cuentaId,
       montoTotal, numCuotas: n, moneda: d.moneda,
       primeraFecha: d.primeraFecha || isoDia(),
-      pagaCon: d.pagaCon,
+      pagaCon: d.pagaCon || null,
       activa: p.activa !== false, creadoEn: p.creadoEn || new Date().toISOString()
     });
     await recargar();
@@ -330,7 +333,7 @@ export function EditorCuota({ p, S, cerrar }) {
         <//>
       <//>
       <div>
-        <div class="dato-cuenta">Se paga con</div>
+        <div class="dato-cuenta">Se carga a</div>
         <div class="chips-scroll" style=${{ marginTop: '6px' }}>
           ${pasivas.map(c => html`<button key=${c.id} class=${'chip' + (d.cuentaId === c.id ? ' sel' : '')}
             onClick=${() => set({ cuentaId: c.id })}><${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}</button>`)}
@@ -338,12 +341,15 @@ export function EditorCuota({ p, S, cerrar }) {
         ${pasivas.length === 0 && html`<div class="dato-cuenta">Crea una tarjeta o deuda en la pestaña Cuentas.</div>`}
       <//>
       <div>
-        <div class="dato-cuenta">Se descuenta de</div>
+        <div class="dato-cuenta">¿Se descuenta de una cuenta? (opcional)</div>
         <div class="chips-scroll" style=${{ marginTop: '6px' }}>
+          <button class=${'chip' + (!d.pagaCon ? ' sel' : '')} onClick=${() => set({ pagaCon: null })}>Va a la factura</button>
           ${debitos.map(c => html`<button key=${c.id} class=${'chip' + (d.pagaCon === c.id ? ' sel' : '')}
             onClick=${() => set({ pagaCon: c.id })}><${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}</button>`)}
         </div>
-        <div class="dato-cuenta" style=${{ marginTop: '4px' }}>Cada mes, la cuota se transfiere sola de esa cuenta a la tarjeta.</div>
+        <div class="dato-cuenta" style=${{ marginTop: '4px' }}>${d.pagaCon
+          ? 'Cada mes, la cuota se transfiere sola de esa cuenta a la tarjeta.'
+          : 'Sin débito: cada cuota se suma a la factura de la tarjeta y la pagas en su fecha de pago.'}</div>
       <//>
       <div>
         <div class="dato-cuenta">Primera cuota</div>
