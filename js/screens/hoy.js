@@ -231,10 +231,10 @@ function PanelProgramadas({ S, tab, nueva, cerrar }) {
   return html`<div>
     <${Segmentado} opciones=${[['fijos', 'Fijos'], ['cuotas', 'Cuotas']]} valor=${pestana} onChange=${setPestana} />
     <div class="paneles-apilados" style=${{ marginTop: '12px' }}>
-      <div style=${{ visibility: pestana === 'fijos' ? 'hidden' : 'visible' }}>
+      <div style=${{ visibility: pestana === 'fijos' ? 'visible' : 'hidden' }}>
         <${PanelFijos} S=${S} cerrar=${cerrar} />
       <//>
-      <div style=${{ visibility: pestana === 'cuotas' ? 'hidden' : 'visible' }}>
+      <div style=${{ visibility: pestana === 'cuotas' ? 'visible' : 'hidden' }}>
         <${PanelCuotas} S=${S} nueva=${nueva} cerrar=${cerrar} />
       <//>
     </div>

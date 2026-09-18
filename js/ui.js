@@ -86,7 +86,11 @@ export function Sheet({ titulo, onClose, children }) {
     const inicio = e => {
       cerrando = false;
       sinScroll = sheet.scrollHeight <= sheet.clientHeight + 2;
-      if (e.touches.length !== 1 || (!sinScroll && sheet.scrollTop > 2) || e.target.closest?.(EXCLUYE)) { cancelado = true; return; }
+      // sin nada que scrollear, TODO gesto dentro de la hoja le pertenece a la
+      // hoja (salvo zonas con pan propio o texto a seleccionar): si nace sobre
+      // un botón y lo dejamos ir, iOS scrollea la página de atrás a través del velo
+      const excl = sinScroll ? 'input, textarea, select, .chips-scroll, .teclado, .asa-zona' : EXCLUYE;
+      if (e.touches.length !== 1 || (!sinScroll && sheet.scrollTop > 2) || e.target.closest?.(excl)) { cancelado = true; return; }
       cancelado = false; decidido = false; activo = true;
       x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
     };
