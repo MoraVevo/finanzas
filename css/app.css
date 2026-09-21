@@ -17,7 +17,7 @@
   --danger-soft: #fdecee;
   --radius: 18px;
   --shadow: 0 1px 2px rgba(21, 32, 28, .05), 0 8px 24px -12px rgba(21, 32, 28, .18);
-  --tab-h: 58px;
+  --tab-h: 63px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
@@ -109,8 +109,9 @@ input[type="datetime-local"], input[type="date"] {
   -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
   border-top: 1px solid var(--line);
   /* gap con el borde físico: un poco de aire, sin regalar toda la safe-area
-     (los 34px del iPhone hacían que tocar cerca disparara la barra del sistema) */
-  padding: 6px 10px calc(min(env(safe-area-inset-bottom, 0px), 12px) + 6px);
+     (los 34px del iPhone hacían que tocar cerca disparara la barra del sistema).
+     Los últimos 5px extra alejan el toque del home indicator en iOS. */
+  padding: 6px 10px calc(min(env(safe-area-inset-bottom, 0px), 12px) + 11px);
   user-select: none; -webkit-user-select: none;
 }
 .tabbar .tab {
@@ -127,7 +128,7 @@ input[type="datetime-local"], input[type="date"] {
 
 .fab {
   position: fixed; z-index: 45;
-  bottom: 14px;
+  bottom: 19px;
   left: 50%; transform: translateX(-50%);
   width: 58px; height: 58px; border-radius: 50%;
   background: linear-gradient(160deg, #16a37d, #0b7a5e);
@@ -137,6 +138,10 @@ input[type="datetime-local"], input[type="date"] {
 }
 .fab svg { display: block; width: 26px; height: 26px; }
 .fab:active { transform: translateX(-50%) scale(.9); }
+
+/* Puntos de color en leyendas de gráficas (sustituyen a los emojis 🟧🟩) */
+.leyenda { display: inline-flex; align-items: center; gap: 5px; }
+.leyenda i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
 
 /* ============ Chips / filas ============ */
 .chip {
@@ -154,13 +159,16 @@ input[type="datetime-local"], input[type="date"] {
 .fila:active { background: color-mix(in srgb, var(--chip) 55%, transparent); }
 .fila .emoji { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
 .emoji svg.icono-cuenta { display: block; width: 24px; height: 24px; margin: 0 auto; }
+.emoji svg { display: block; width: 24px; height: 24px; margin: 0 auto; }
 .emoji svg.icono-ui { display: block; width: 24px; height: 24px; margin: 0 auto; }
 svg.icono-ui { width: 15px; height: 15px; vertical-align: -2.5px; }
 .emoji svg.icono-categoria { display: block; width: 24px; height: 24px; margin: 0 auto; }
 .grid-cats .cat .emoji svg.icono-categoria { width: 22px; height: 22px; }
 .barra-fila .info svg.icono-categoria { width: 15px; height: 15px; vertical-align: -2.5px; }
 .chips-scroll svg.icono-cuenta { width: 15px; height: 15px; flex-shrink: 0; }
+.chips-scroll svg.icono-categoria { width: 15px; height: 15px; flex-shrink: 0; }
 .sub svg.icono-cuenta { width: 13px; height: 13px; vertical-align: -2px; }
+.dato-cuenta svg.icono-cuenta { width: 14px; height: 14px; vertical-align: -2.5px; color: var(--accent); }
 .fila .cuerpo { flex: 1; min-width: 0; }
 .fila .titulo { font-size: 15px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fila .sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -227,6 +235,13 @@ svg.icono-ui { width: 15px; height: 15px; vertical-align: -2.5px; }
   transition: all .25s ease;
 }
 .carrusel-punto.activo::after { width: 20px; background: var(--accent); }
+/* Tick óptico: cada punto destella al ganar la selección — cruzar la fila
+   con el dedo deja esa "vibración" visual (iOS no expone vibración web,
+   así que el destello es la pista ahí; Android suma el navigator.vibrate). */
+@media (prefers-reduced-motion: no-preference) {
+  .carrusel-punto.activo::after { animation: punto-tick .16s ease; }
+}
+@keyframes punto-tick { from { transform: scale(1.55); } to { transform: scale(1); } }
 
 /* ============ Pantalla Agregar ============ */
 /* height exacto (no min-height): el panel inferior queda anclado al borde bajo

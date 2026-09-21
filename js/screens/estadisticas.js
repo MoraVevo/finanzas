@@ -8,7 +8,7 @@ import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
 import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas, deudasAntesDeIngreso, propensionMarginal } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
-import { IconoCuenta, IconoCategoria, IconoCat, IconoId, ICONO_ETIQUETA, ICONO_TRANSFER, ICONO_TARJETA } from '../iconos.js';
+import { IconoCuenta, IconoCategoria, IconoCat, IconoId, ICONO_ETIQUETA, ICONO_TRANSFER, ICONO_TARJETA, ICONO_CALENDARIO } from '../iconos.js';
 import ActividadBancaria, { EstadoTarjeta } from '../actividad-bancaria.js';
 import VistaAhorro from '../actividad-ahorro.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, deISO, claveMesActual, sumarMesClave } from '../util.js';
@@ -39,7 +39,7 @@ function CajaFechas({ filtro, onFiltro }) {
   const elegirPreset = k => { onFiltro(k); setAbierto(false); };
   return html`<div style=${{ marginTop: '10px', marginBottom: '12px' }}>
     <button class="caja-fecha" onClick=${abrir}>
-      🗓 ${etiquetaRango(desde, hasta)} <span class="chev">▾</span>
+      ${ICONO_CALENDARIO} ${etiquetaRango(desde, hasta)} <span class="chev">▾</span>
     </button>
     ${abierto && html`<${Sheet} titulo="Elegir período" onClose=${() => setAbierto(false)}>
       <div class="chips-scroll" style=${{ marginBottom: '14px' }}>
@@ -176,7 +176,7 @@ function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope }) {
   useEffect(() => {
     const fila = filaRef.current;
     if (!fila) return;
-    let x0 = null, y0 = null, horizontal = null;
+    let x0 = null, y0 = null, horizontal = null, suprimirClick = false;
     const ini = e => {
       if (!e.isPrimary) return;
       x0 = e.clientX; y0 = e.clientY; horizontal = null;
@@ -199,20 +199,38 @@ function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope }) {
         if (d < dMin) { dMin = d; mejor = i; }
       }
       const objetivo = ordenRef.current[mejor];
-      if (objetivo !== undefined && objetivo !== scopeRef.current) setCuentaScope(objetivo);
+      if (objetivo !== undefined && objetivo !== scopeRef.current) {
+        setCuentaScope(objetivo);
+        // tick háptico donde el navegador lo ofrece (Android); iOS Safari no
+        // expone vibración web — ahí la pista es el destello del punto activo
+        try { navigator.vibrate?.(4); } catch { /* sin vibración: queda el destello */ }
+      }
     };
-    const fin = () => { x0 = null; horizontal = null; };
+    const fin = () => {
+      // tras un scrub, el click sintético del navegador sobre el punto donde
+      // nació el gesto NO debe re-elegir ese punto y revertir el scrub
+      if (horizontal) suprimirClick = true;
+      x0 = null; horizontal = null;
+    };
+    const click = e => {
+      if (!suprimirClick) return;
+      suprimirClick = false;
+      e.stopPropagation();
+      e.preventDefault();
+    };
     fila.addEventListener('pointerdown', ini);
     fila.addEventListener('pointermove', mov);
     // el up puede caer fuera de la fila: escucharlo en window asegura que el
     // gesto siempre termina y un scroll posterior no hereda el estado viejo
     window.addEventListener('pointerup', fin);
     window.addEventListener('pointercancel', fin);
+    fila.addEventListener('click', click, true);
     return () => {
       fila.removeEventListener('pointerdown', ini);
       fila.removeEventListener('pointermove', mov);
       window.removeEventListener('pointerup', fin);
       window.removeEventListener('pointercancel', fin);
+      fila.removeEventListener('click', click, true);
     };
     // se vincula cuando la fila de puntos existe (con una sola cuenta no hay)
   }, [orden.length > 1]);
@@ -333,7 +351,7 @@ function VistaRango({ S, todo }) {
     <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
     <${SelectorCuentas} S=${S} todo=${todo} cuentaScope=${cuentaScope} setCuentaScope=${setCuentaScope} />
 
-    ${!cuentaScope && html`<p class="ab-contexto">Para ver entradas, salidas y transferencias de una cuenta, elígela arriba.</p>`}
+    ${!cuentaScope && html`<p class="ab-contexto">Elige una cuenta arriba para ver solo sus movimientos.</p>`}
 
     ${esPasiva ? html`
     <div class="stats-grid-3">
@@ -412,8 +430,8 @@ function VistaRango({ S, todo }) {
           <span class="num">${fmtConMoneda(c.monto, principal)} · ${Math.round(c.monto / st.gasto * 100)}%</span>
         </div>
         <div class="pista"><div class="lleno" style=${{ width: (c.monto / maxCat * 100) + '%' }}></div></div>
-        ${presup.get(c.id) && html`<div class="dato-cuenta" style=${{ color: c.monto > presup.get(c.id) ? 'var(--gasto)' : 'var(--muted)' }}>
-          ${c.monto > presup.get(c.id) ? '⚠ excede' : 'de'} ${fmtConMoneda(presup.get(c.id), principal)} presupuestados
+        ${presup.get(c.id) && html`<div class="dato-cuenta" style=${{ color: c.monto > presup.get(c.id) ? 'var(--gasto)' : 'var(--muted)', fontWeight: c.monto > presup.get(c.id) ? 700 : 400 }}>
+          ${c.monto > presup.get(c.id) ? 'excede' : 'de'} ${fmtConMoneda(presup.get(c.id), principal)} presupuestados
         <//>`}
       </div>`)}
       ${st.porCategoria.length === 0 && html`<div class="vacio">Sin gastos en este período.</div>`}
@@ -439,7 +457,7 @@ function VistaRango({ S, todo }) {
       <h3>Tendencia · últimos 12 meses</h3>
       <${Tendencia} datos=${tend} max=${maxTend} />
       <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '6px' }}>
-        <span>🟧 Gasto</span><span>🟩 Ingreso</span>
+        <span class="leyenda"><i style=${{ background: 'var(--gasto)' }}></i> Gasto</span><span class="leyenda"><i style=${{ background: 'var(--ingreso)' }}></i> Ingreso</span>
       </div>
     </div>
 
@@ -487,7 +505,7 @@ function TarjetaMarginal({ S, todo, principal }) {
     : { color: 'var(--ingreso)', texto: `El ingreso extra casi todo se guarda: ${cien} de cada 100. Así se construye patrimonio.` };
   return html`<div class="tarjeta">
     <h3>Cuando te entra más</h3>
-    <p class="ab-nota">Cada punto es un mes completo (el mes en curso no cuenta: aún no termina de gastarse). Más a la derecha, más te entró; más arriba, más quedó guardado.</p>
+    <p class="ab-nota">Cada punto es un mes completo. Más a la derecha, más te entró; más arriba, más quedó guardado.</p>
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">Guardás por cada 100 extra</div>
         <div class="val num" style=${{ color: veredicto?.color || 'var(--muted)' }}>${pm.confiable ? `≈ ${sim}${cien}` : '≈ …'}</div>
@@ -583,7 +601,7 @@ function VistaFlujo({ S, todo }) {
 
   return html`<div>
     <div class="chips-scroll" style=${{ marginBottom: '10px' }}>
-      <button class=${'chip' + (!cuentaScope ? ' sel' : '')} onClick=${() => setCuentaScope(null)}>🌏 Patrimonio</button>
+      <button class=${'chip' + (!cuentaScope ? ' sel' : '')} onClick=${() => setCuentaScope(null)}><${IconoId} id="globo" /> Patrimonio</button>
       ${S.cuentas.filter(c => !c.archivada).map(c => html`
         <button key=${c.id} class=${'chip' + (cuentaScope === c.id ? ' sel' : '')} onClick=${() => setCuentaScope(c.id)}>
           <${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}
@@ -649,8 +667,7 @@ function VistaFlujo({ S, todo }) {
         </div>`;
       })}
       ${fl.lista.length === 0 && html`<div class="vacio">
-        Registra lo que sabes que viene: "15 — salario +Q8,000", "20 — pago tarjeta", "12 — +Q400"…<br/>
-        La línea punteada te mostrará cuánto tendrás en cada fecha.
+        Registra lo que sabes que viene: "15 — salario +Q8,000", "20 — pago tarjeta", "12 — +Q400"…
       <//>`}
 
       ${fl.vencidos.length > 0 && html`<div style=${{ marginTop: '10px' }}>
@@ -670,12 +687,12 @@ function VistaFlujo({ S, todo }) {
         <//>`;
         })}
         <div class="dato-cuenta" style=${{ marginTop: '6px' }}>
-          "Ya ocurrió" lo convierte en movimiento real con su fecha original (y lo quita de aquí). Tu pasado vive solo en Movimientos.
+          "Ya ocurrió" lo convierte en movimiento real con su fecha original.
         <//>
       <//>`}
 
       <div class="dato-cuenta" style=${{ marginTop: '8px' }}>
-        Esto no es una predicción: son <b>tus registros</b>. La línea sólida es tu historia real; la punteada, lo que anotaste que viene.
+        La línea sólida es tu historia; la punteada, lo que anotaste que viene.
       </div>
     </div>
 
@@ -991,7 +1008,7 @@ function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
       })}
     </svg>
     <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
-      <span>🟩 Ingresos</span><span>🟥 Gastos</span>
+      <span class="leyenda"><i style=${{ background: 'var(--ingreso)' }}></i> Ingresos</span><span class="leyenda"><i style=${{ background: 'var(--gasto)' }}></i> Gastos</span>
     </div>
     ${meses.length === 0 && html`<div class="vacio">Sin movimientos futuros aún en el horizonte de ${horizonte} mes(es).</div>`}
   </div>`;

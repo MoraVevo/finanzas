@@ -238,7 +238,7 @@ export default function Agregar({ txId }) {
         </div>
         ${datos.tipo === 'transferencia' && destinoObj && html`<div class="dato-cuenta" style=${{ marginTop: '6px' }}>
           ${[destinoObj.banco, destinoObj.numero && ('№ ' + destinoObj.numero), destinoObj.titular].filter(Boolean).join(' · ')
-            || 'Tip: registra banco y número de la cuenta en la pestaña Cuentas'}
+            || 'Registra banco y número en Cuentas'}
         <//>`}
         ${distintaMoneda && html`<div class="mini-monto" style=${{ marginTop: '8px' }}>
           <span class="dato-cuenta">Recibe ${destinoObj.moneda}</span>

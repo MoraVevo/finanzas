@@ -77,7 +77,7 @@ export default function VistaAhorro({ cuenta, txs, tasas, cuentas = [], categori
     <div class="tarjeta">
       <h3>Constancia mes a mes</h3>
       <div class="dato-cuenta" style=${{ marginBottom: '8px' }}>
-        ${proy.racha >= 2 ? `🔥 Llevás ${proy.racha} meses seguidos aportando.`
+        ${proy.racha >= 2 ? `Llevás ${proy.racha} meses seguidos aportando.`
           : proy.racha === 1 ? 'Aportaste este mes.'
           : proy.porMes.length ? 'Este mes aún sin aportes — la constancia es lo que hace crecer la línea.'
           : 'Aporta con una transferencia a esta cuenta y la historia empieza.'}
@@ -109,7 +109,7 @@ export default function VistaAhorro({ cuenta, txs, tasas, cuentas = [], categori
 
     ${a.estado.length > 0 && html`<div class="tarjeta">
       <${EncabezadoEstado} desde=${desde} hasta=${hasta} onFiltro=${onFiltro} txs=${txs} cuenta=${cuenta} />
-      <p class="ab-nota">Fila por fila, del más reciente al más antiguo, con lo que quedó guardado después de cada movimiento.</p>
+      <p class="ab-nota">Del más reciente al más antiguo, con lo que quedó guardado después de cada uno.</p>
       ${[...a.estado].reverse().map(({ tx, delta, balance }) => html`<${FilaEstado}
         key=${tx.id} tx=${tx} delta=${delta} balance=${balance} moneda=${moneda}
         nombreCuenta=${nombre} catPorId=${catPorId} />`)}

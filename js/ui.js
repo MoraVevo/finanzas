@@ -1,7 +1,7 @@
 // Componentes compartidos de UI (Preact + htm, sin build).
 import { html, useState, useEffect, useRef } from '../vendor/preact-standalone.module.js';
 import { saldoCuenta } from './model.js';
-import { IconoCuenta, IconoCat, IconoId, ICONOS_CATEGORIA, ICONO_TRANSFER, ICONO_TARJETA, ICONO_CAMARA, ICONO_IMAGEN } from './iconos.js';
+import { IconoCuenta, IconoCat, IconoId, ICONOS_CATEGORIA, ICONO_TRANSFER, ICONO_TARJETA, ICONO_CAMARA, ICONO_IMAGEN, ICONO_ENTRA, ICONO_SALE } from './iconos.js';
 import { fmtConMoneda, fmtFecha, fmtHora, isoLocal, isoDia } from './util.js';
 
 /* ---------- Sheet: panel deslizante inferior ----------
@@ -256,7 +256,7 @@ export function FilaTx({ tx, cuentas, categorias, onClick, perspectiva = null })
     } else if (saleATercero) { clase = 'm-gasto'; signo = '−'; }
     else if (vieneDeTercero) { clase = 'm-ingreso'; signo = '+'; }
   }
-  // El emoji vive SOLO en el ícono de la fila: títulos y subtítulos van limpios.
+  // El icono vive SOLO en el ícono de la fila: títulos y subtítulos van limpios.
   const titulo = tx.tipo === 'transferencia'
     ? (esPagoDeuda ? `Pago de deuda · ${destino?.nombre || '?'}` : `${cta?.nombre || '?'} → ${destino?.nombre || '?'}`)
     : (tx.motivo || cat?.nombre || (tx.tipo === 'ingreso' ? 'Ingreso' : 'Gasto'));
@@ -266,7 +266,7 @@ export function FilaTx({ tx, cuentas, categorias, onClick, perspectiva = null })
     cta && tx.tipo !== 'transferencia' ? cta.nombre : null,
     (tx.etiquetas || []).map(e => '#' + e).join(' ') || null].filter(Boolean).join(' · ');
   return html`<div class="fila" onClick=${onClick}>
-    <span class="emoji">${tx.tipo === 'transferencia' ? (esPagoDeuda ? ICONO_TARJETA : ICONO_TRANSFER) : cat ? html`<${IconoCat} icono=${cat.icono} emoji=${cat.emoji} />` : (tx.tipo === 'ingreso' ? '💰' : '📦')}</span>
+    <span class="emoji">${tx.tipo === 'transferencia' ? (esPagoDeuda ? ICONO_TARJETA : ICONO_TRANSFER) : cat ? html`<${IconoCat} icono=${cat.icono} emoji=${cat.emoji} />` : (tx.tipo === 'ingreso' ? ICONO_ENTRA : ICONO_SALE)}</span>
     <div class="cuerpo">
       <div class="titulo">${titulo}</div>
       <div class="sub">${sub}</div>

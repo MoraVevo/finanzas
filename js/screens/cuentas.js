@@ -5,7 +5,7 @@ import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
 import { saldoCuenta, saldoConvertido, convertir, planCuotas, TIPOS_CUENTA } from '../model.js';
 import { Sheet, SelectorMoneda, FilaTx, Segmentado } from '../ui.js';
-import { IconoCuenta, ICONO_EDITAR, ICONO_CAJA, ICONO_RESTAURAR } from '../iconos.js';
+import { IconoCuenta, ICONO_EDITAR, ICONO_CAJA, ICONO_RESTAURAR, ICONO_TRANSFER, ICONO_COPIAR } from '../iconos.js';
 import { uid, textoAEntero, enteroATexto, fmtConMoneda, fmtFecha, isoLocal, isoDia } from '../util.js';
 
 export default function Cuentas() {
@@ -79,12 +79,12 @@ export default function Cuentas() {
     <div class="tarjeta">
       <h3>Cómo funcionan</h3>
       <div class="dato-cuenta" style=${{ lineHeight: 1.6 }}>
-        💳 Las <b>tarjetas</b> y <b>deudas</b> van en negativo: registrar un gasto con ellas aumenta tu deuda,
-        y pagarlas es una <b>transferencia</b> desde tu banco — nunca un gasto doble.<br/>
-        🔁 Sacar efectivo del cajero también es una transferencia.<br/>
-        🏺 El <b>ahorro</b> es dinero tuyo: moverlo ahí no es un gasto.<br/>
-        🤝 Las cuentas <b>de terceros</b> guardan los datos de otra persona: depositarles es una
-        transferencia que sale de tu patrimonio y acumula cuánto le has depositado.
+        <${IconoCuenta} tipo="tarjeta" /> Las <b>tarjetas</b> y <b>deudas</b> van en negativo: gastar con ellas
+        sube la deuda y pagarlas es una <b>transferencia</b> desde tu banco.<br/>
+        ${ICONO_TRANSFER} Sacar efectivo del cajero también es una transferencia.<br/>
+        <${IconoCuenta} tipo="ahorro" /> El <b>ahorro</b> es dinero tuyo: moverlo ahí no es un gasto.<br/>
+        <${IconoCuenta} tipo="tercero" /> Las cuentas <b>de terceros</b> guardan datos de otra persona:
+        depositarles sale de tu patrimonio y su saldo acumula lo depositado.
       </div>
     </div>
 
@@ -151,7 +151,7 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
 
     ${datos.some(d => d[1]) && html`<div class="tarjeta" style=${{ paddingTop: '4px' }}>
       ${datos.map(([etq, val]) => val && html`<div key=${etq} class="fila">
-        <div class="cuerpo"><div class="sub">${etq}</div><div class="titulo copiable" onClick=${() => copiar(val)}>${val} 📋</div></div>
+        <div class="cuerpo"><div class="sub">${etq}</div><div class="titulo copiable" onClick=${() => copiar(val)}>${val} ${ICONO_COPIAR}</div></div>
       </div>`)}
     <//>`}
 
@@ -294,7 +294,7 @@ function EditorCuenta({ c, S, cerrar, alGuardar }) {
         <button key=${k} class=${'chip' + (f.tipo === k ? ' sel' : '')} onClick=${() => set({ tipo: k })}><${IconoCuenta} tipo=${k} /> ${v.nombre}</button>`)}
     </div>
     ${f.tipo === 'tercero' && html`<div class="dato-cuenta" style=${{ marginBottom: '10px' }}>
-      🤝 No es tu dinero: transferir a esta cuenta no cuenta como gasto, pero sí sale de tu
+      <${IconoCuenta} tipo="tercero" /> No es tu dinero: transferirle no es gasto, pero sí sale de tu
       patrimonio. Su saldo acumula todo lo depositado.
     <//>`}
     <div style=${{ display: 'grid', gap: '8px' }}>
@@ -314,7 +314,7 @@ function EditorCuenta({ c, S, cerrar, alGuardar }) {
         <div class="dato-cuenta">Meta de ahorro (opcional)</div>
         <input inputMode="decimal" placeholder="Ej. 5000" value=${f.meta} style=${{ textAlign: 'right' }}
           onInput=${e => set({ meta: e.target.value })} />
-        <div class="dato-cuenta" style=${{ marginTop: '4px' }}>Con una meta, Estadísticas te muestra qué tan cerca estás y en qué mes la alcanzarías a tu ritmo de aportes.</div>
+        <div class="dato-cuenta" style=${{ marginTop: '4px' }}>Con una meta, Estadísticas te muestra tu avance y el mes en que la alcanzarías.</div>
       <//>`}
       ${f.tipo === 'tarjeta' && html`<div style=${{ display: 'grid', gap: '8px', background: 'var(--chip)', borderRadius: '14px', padding: '10px' }}>
         <div class="dato-cuenta" style=${{ fontWeight: 700 }}>CRÉDITO DE LA TARJETA</div>
@@ -332,7 +332,7 @@ function EditorCuenta({ c, S, cerrar, alGuardar }) {
               onInput=${e => set({ pagoDia: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) })} />
           <//>
         <//>
-        <div class="dato-cuenta">Con día de pago y deuda pendiente, el pago aparece solo en Inicio · Próximos pagos fijos, ese mismo día por lo que debes.</div>
+        <div class="dato-cuenta">Con día de pago y deuda pendiente, el pago aparece solo en Inicio ese día, por lo que debas.</div>
         <div>
           <div class="dato-cuenta">Tipo de crédito</div>
           <${Segmentado} opciones=${[['individual', 'Individual'], ['compartida', 'Bolsa compartida']]} valor=${f.bolsa} onChange=${b => set({ bolsa: b })} />
@@ -374,7 +374,7 @@ function EditorCuenta({ c, S, cerrar, alGuardar }) {
             <input inputMode="numeric" placeholder="Ej. 20" value=${f.pagoDia} style=${{ textAlign: 'right', maxWidth: '110px' }}
               onInput=${e => set({ pagoDia: e.target.value.replace(/[^0-9]/g, '').slice(0, 2) })} />
           <//>`}
-          <div class="dato-cuenta">Una deuda no vive sin fecha: pon el día del mes en que se paga${f.tipo === 'tarjeta' ? ' (en el bloque de crédito)' : ''}.</div>
+          <div class="dato-cuenta">Pon el día del mes en que se paga${f.tipo === 'tarjeta' ? ' (en el bloque de crédito)' : ''}.</div>
         `}
       <//>`}
       <input placeholder="Banco (opcional)" list="bancos-conocidos" value=${f.banco} onInput=${e => set({ banco: e.target.value })} />

@@ -167,7 +167,7 @@ export default function Hoy() {
         <button class="chip" aria-label="Programar movimiento" onClick=${() => setProgramadas({ tab: 'fijos' })}>＋</button>
       </div>
       <div class="dato-cuenta" style=${{ marginBottom: '6px' }}>
-        Teórico · hoy: <b class="num">${fmtConMoneda(pa.base, principal)}</b> disponibles${fijosActivos.length ? '' : ' — configura tus ingresos y gastos fijos'}
+        Teórico · hoy: <b class="num">${fmtConMoneda(pa.base, principal)}</b> disponibles${fijosActivos.length ? '' : ' — configura tus fijos'}
       </div>
       ${pa.rows.slice(0, 10).map(r => {
         const esDeuda = r.tipo === 'deuda';
@@ -189,14 +189,12 @@ export default function Hoy() {
         </div>`;
       })}
       ${pa.rows.length === 0 && html`<div class="vacio">
-        Ej.: <b>Salario</b> cada mes el día 10, <b>Celular</b> el día 11.<br/>
-        Así la app te dice si te alcanzará para cada pago.
+        Ej.: <b>Salario</b> cada mes el día 10, <b>Celular</b> el día 11.
       <//>`}
       ${pa.rows.some(r => !r.ok) && html`<div class="dato-cuenta" style=${{ marginTop: '6px', color: 'var(--warn)' }}>
         En amarillo, los pagos que tu dinero no cubre a tiempo.
       <//>`}
-      ${pa.rows.length > 10 && html`<div class="dato-cuenta" style=${{ marginTop: '6px' }}>Mostrando los próximos 10 — el resto vive en tus programas.</div>`}
-      ${pa.rows.length > 0 && html`<div class="dato-cuenta" style=${{ marginTop: '6px' }}>Solo considera tus fijos y cuotas — no los gastos de cada día.</div>`}
+      ${pa.rows.length > 10 && html`<div class="dato-cuenta" style=${{ marginTop: '6px' }}>Mostrando los próximos 10.</div>`}
     </div>
 
     <div class="tarjeta">
@@ -248,10 +246,7 @@ function PanelCuotas({ S, nueva, cerrar }) {
   const lista = [...S.cuotas].sort((a, b) => (a.activa === false ? 1 : 0) - (b.activa === false ? 1 : 0));
   return html`<div>
     <div class="dato-cuenta" style=${{ marginBottom: '10px' }}>
-      Compras financiadas o préstamos: cada mes se cobra la cuota hasta agotar el
-      plan y desaparece solo. Registra la compra como gasto con la tarjeta para
-      que tu límite la refleje. En una tarjeta de crédito la cuota va a la
-      factura y la pagas en su fecha de pago — sin cuenta de débito.
+      Compras financiadas o préstamos: la cuota se cobra cada mes hasta agotar el plan y desaparece solo.
     </div>
     ${lista.map(p => {
       const info = planCuotas(p);
@@ -346,7 +341,7 @@ export function EditorCuota({ p, S, cerrar }) {
         ${pasivas.length === 0 && html`<div class="dato-cuenta">Crea una tarjeta o deuda en la pestaña Cuentas.</div>`}
       <//>
       <div>
-        <div class="dato-cuenta">¿Se descuenta de una cuenta? (opcional)</div>
+        <div class="dato-cuenta">Se descuenta de (opcional)</div>
         <div class="chips-scroll" style=${{ marginTop: '6px' }}>
           <button class=${'chip' + (!d.pagaCon ? ' sel' : '')} onClick=${() => set({ pagaCon: null })}>Va a la factura</button>
           ${debitos.map(c => html`<button key=${c.id} class=${'chip' + (d.pagaCon === c.id ? ' sel' : '')}
@@ -377,8 +372,7 @@ function PanelFijos({ S, cerrar }) {
   return html`<div>
     <div class="dato-cuenta" style=${{ marginBottom: '10px' }}>
       Reglas que se repiten sin fecha de fin: salario, alquiler, celular… Alimentan el
-      poder adquisitivo teórico de Inicio. Si un gasto se paga con tarjeta, elige la
-      fuente y se suma a esa deuda en vez de descontar tu disponible.
+      teórico de Inicio; si se pagan con tarjeta, se suman a esa deuda.
     </div>
     ${lista.map(f => {
       const fu = f.fuente ? S.cuentas.find(c => c.id === f.fuente) : null;
@@ -459,7 +453,7 @@ function EditorFijo({ f, S, cerrar }) {
             onClick=${() => set({ cuenta: c.id })}><${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}</button>`)}
         <//>
         ${cuentaDest && html`<div class="dato-cuenta" style=${{ marginTop: '4px' }}>
-          El día que llega, el ingreso se registra solo en ${cuentaDest.nombre} — ya no lo anotas tú.
+          El día que llega se registra solo en ${cuentaDest.nombre}.
         <//>`}
         ${debitos.length === 0 && html`<div class="dato-cuenta">Crea una cuenta de débito en la pestaña Cuentas.</div>`}
       <//>`}
@@ -472,8 +466,7 @@ function EditorFijo({ f, S, cerrar }) {
         <//>
         <div class="dato-cuenta" style=${{ marginTop: '4px' }}>El día que llega, el gasto se registra solo desde esa cuenta.</div>
         ${fuentePasiva && html`<div class="dato-cuenta" style=${{ marginTop: '4px' }}>
-          Con tarjeta/deuda: el cargo sube su deuda ese día; la pagás con tus abonos
-          (transferencias) a ${fuenteObj.nombre}.
+          El cargo sube su deuda ese día; la pagás con transferencias a ${fuenteObj.nombre}.
         <//>`}
       <//>`}
       <div>

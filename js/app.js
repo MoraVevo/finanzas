@@ -4,7 +4,7 @@ import fin from './db.js';
 import { useStore, recargar, nav, getState } from './store.js';
 import { fijosPendientes, cuotasPendientes } from './model.js';
 import { uid, isoDia } from './util.js';
-import { ICONOS_TAB } from './iconos.js';
+import { ICONOS_TAB, ICONO_CAJA } from './iconos.js';
 import Onboarding from './screens/onboarding.js';
 import Hoy from './screens/hoy.js';
 import Agregar from './screens/agregar.js';
@@ -24,7 +24,7 @@ class Guarda extends Component {
   render() {
     if (this.state.error) {
       return html`<div class="vista"><div class="tarjeta" style=${{ textAlign: 'center', marginTop: '40px' }}>
-        <div style=${{ fontSize: '40px' }}>😅</div>
+        <div style=${{ color: 'var(--warn)', display: 'flex', justifyContent: 'center' }}><span class="emoji">${ICONO_CAJA}</span></div>
         <h3>Esta pantalla falló, pero la app sigue viva</h3>
         <div class="dato-cuenta" style=${{ marginBottom: '12px' }}>${String(this.state.error?.message || this.state.error)}</div>
         <button class="btn btn-primario" onClick=${() => this.setState({ error: null })}>Reintentar</button>

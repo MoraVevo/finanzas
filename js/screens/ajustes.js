@@ -8,7 +8,7 @@ import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.j
 import { exportarCSV, exportarJSON, importarJSON, copiarParaIA, copiarRespaldoJSON } from '../export.js';
 import { ICONO_ETIQUETA, IconoCat } from '../iconos.js';
 
-const VERSION = '1.89';
+const VERSION = '1.90';
 
 export default function Ajustes() {
   const S = useStore();
@@ -69,7 +69,6 @@ export default function Ajustes() {
             2. Elige <b>“Añadir a pantalla de inicio”</b>.<br/>
             3. Confirma <b>Añadir</b>.<br/><br/>
             La app abrirá a pantalla completa, funcionará offline y sus datos no se borran por inactividad.`}
-        <br/><br/>También úsala desde tu laptop: abre la misma dirección en el navegador.
       </div>
     <//>`}
   </div>`;
@@ -295,8 +294,5 @@ function PanelDatos({ store: S, cerrar }) {
         toast('✓ Respaldo importado');
       } catch (err) { toast('Error al importar: ' + err.message); }
     }} />
-    <div class="dato-cuenta" style=${{ marginTop: '8px' }}>
-      La importación reemplaza todo (es para restaurar o migrar de dispositivo). Exporta un respaldo antes.
-    </div>
   <//>`;
 }

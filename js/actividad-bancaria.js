@@ -71,7 +71,7 @@ export function EstadoTarjeta({ cuenta, txs, tasas, cuentas = [], categorias = [
         ${[...ciclos].reverse().map(c => html`<option key=${c.inicio} value=${c.inicio}>Ciclo ${etiqueta(c)}</option>`)}
       </select>
     </div>
-    <p class="ab-nota">Ciclo del corte día ${cuenta.corte}: lo que cargaste a la tarjeta y lo que abonaste, con la deuda después de cada movimiento — para conciliar con tu estado bancario. Toca una fila para corregirla.</p>
+    <p class="ab-nota">Lo que cargaste y abonaste en el ciclo, con la deuda después de cada movimiento. Toca una fila para corregirla.</p>
     <dl class="ab-desglose">
       <div><dt>Cargos del ciclo</dt><dd class="num m-gasto">${fmt(cargos)}</dd></div>
       <div><dt>Abonos (pagos)</dt><dd class="num m-ingreso">${fmt(abonos)}</dd></div>
@@ -112,7 +112,7 @@ export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], ca
         ${[['Ingresos registrados', a.ingresos], ['Transferencias recibidas', a.recibidas], ['Gastos registrados', a.gastos], ['Transferencias enviadas', a.enviadas]].map(([titulo, valor]) => html`
           <div><dt>${titulo}</dt><dd class="num">${fmt(valor)}</dd></div>`)}
       </dl>
-      <p class="ab-nota">Entradas = ingresos + transferencias recibidas. Salidas = gastos + transferencias enviadas. Mover dinero entre tus cuentas no es un gasto ni un ingreso global.</p>
+      <p class="ab-nota">Entradas = ingresos + transferencias recibidas; salidas = gastos + transferencias enviadas.</p>
       ${!a.movimientos && html`<p class="vacio">Sin movimientos en este período. Puedes elegir otro período arriba.</p>`}
       ${a.contrapartes.length > 0 && html`<details class="ab-transferencias"><summary>Ver origen y destino de las transferencias</summary>
         ${a.contrapartes.map(c => html`<div class="ab-contraparte"><b>${nombre(c.id)}</b>
@@ -151,11 +151,11 @@ export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], ca
         <div><dt>Al cierre del período</dt><dd class="num">${fmt(a.saldoFinal)}</dd></div>
       </dl>
       <${SaldoDiario} key=${cuenta.id + desde + hasta} datos=${a.serie} moneda=${moneda} />
-      <p class="ab-nota">Saldo reconstruido con el saldo inicial y los movimientos registrados. No incluye movimientos programados. Cambiar el saldo inicial modifica este historial.</p>
+      <p class="ab-nota">Saldo reconstruido con el saldo inicial y tus movimientos; cambiar el saldo inicial reescribe este historial.</p>
     </div>`}
     ${a.estado.length > 0 && html`<div class="tarjeta">
       <${EncabezadoEstado} desde=${desde} hasta=${hasta} onFiltro=${onFiltro} txs=${txs} cuenta=${cuenta} />
-      <p class="ab-nota">Fila por fila, del más reciente al más antiguo, con el saldo que quedó después de cada movimiento — para conciliar con tu banco. Toca uno para corregirlo.</p>
+      <p class="ab-nota">Cada fila muestra el saldo que quedó después. Toca para corregir.</p>
       ${[...a.estado].reverse().map(({ tx, delta, balance }) => {
         const contraparte = cuentas.find(c => c.id === (delta >= 0 ? tx.cuenta : tx.cuentaDestino));
         return html`<${FilaEstado}

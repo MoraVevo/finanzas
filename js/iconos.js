@@ -95,6 +95,18 @@ export const ICONO_IMAGEN = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 
   <circle cx="9" cy="9.4" r="1.2" />
 </svg>`;
 
+/** Calendario: elegir período. */
+export const ICONO_CALENDARIO = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 24 24">
+  <rect x="3.8" y="5.2" width="16.4" height="15" rx="2.4" />
+  <path d="M3.8 9.9h16.4M8.2 3.4v3.4M15.8 3.4v3.4" />
+</svg>`;
+
+/** Dos hojas: copiar al portapapeles. */
+export const ICONO_COPIAR = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 24 24" style="width:13px;height:13px">
+  <rect x="8.8" y="8.8" width="11.2" height="11.2" rx="2" />
+  <path d="M15.2 8.8V6.4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.2a2 2 0 0 0 2 2h2.4" />
+</svg>`;
+
 /** Flecha hacia una bandeja: dinero que entra (ingreso). */
 export const ICONO_ENTRA = html`<svg class="icono-ui" ...${trazo} viewBox="0 0 24 24">
   <path d="M12 4.5v9M8 9.5l4 4 4-4" />
@@ -162,9 +174,12 @@ const EMOJIS_GRUPO = {
   trabajo: '💼 🖇️ 📋 📁 🏢',
   crecimiento: '📈 🪙',
 };
+/** Los emojis de sistema traen selectores de variación (U+FE0F) que rompen
+ *  la comparación por clave: todo lookup va pelado. */
+const sinFv = e => (e || '').replace(/\uFE0F/g, '');
 const EMOJI_A_GRUPO = {};
 for (const [grupo, lista] of Object.entries(EMOJIS_GRUPO)) {
-  for (const e of lista.split(' ')) EMOJI_A_GRUPO[e] = grupo;
+  for (const e of lista.split(' ')) EMOJI_A_GRUPO[sinFv(e)] = grupo;
 }
 const NOMBRE_A_GRUPO = [
   [/comida|restaurant|café|cafe|pizza|soda|snack/i, 'comida'],
@@ -186,7 +201,7 @@ const NOMBRE_A_GRUPO = [
 /** Icono de categoría: mapea su emoji a un grupo con SVG propio; lo no
  *  reconocido cae en una etiqueta genérica. */
 export function IconoCategoria({ emoji, nombre }) {
-  const grupo = EMOJI_A_GRUPO[emoji]
+  const grupo = EMOJI_A_GRUPO[sinFv(emoji)]
     || (NOMBRE_A_GRUPO.find(([re]) => re.test(nombre || ''))?.[1])
     || 'tag';
   return html`<svg class="icono-categoria" ...${trazo} viewBox="0 0 24 24">${CONTENIDO_CATEGORIA[grupo]}</svg>`;
@@ -327,6 +342,10 @@ const wifi = html`<path d="M4 9.5a12.5 12.5 0 0 1 16 0M7 13a8.5 8.5 0 0 1 10 0M9
 const parqueo = html`<rect x="4" y="4" width="16" height="16" rx="3.5" />
   <path d="M9.5 16.5v-9h3a2.7 2.7 0 0 1 0 5.4h-3" />`;
 
+/** Persona: cuentas de terceros y lo que le corresponde a otro. */
+const persona = html`<circle cx="12" cy="8.1" r="3.2" />
+  <path d="M5.9 19.6c.8-3.2 3.2-4.9 6.1-4.9s5.3 1.7 6.1 4.9" />`;
+
 const CONTENIDO_CATEGORIA_PROPIA = {
   '🍔': hamburguesa, '🛒': carrito, '🍽️': cubiertos, '☕': tazaCafe,
   '🚗': coche,
@@ -362,7 +381,17 @@ const CONTENIDO_CATEGORIA_PROPIA = {
   '🅿️': parqueo,
   '🅿': parqueo,
   '🎫': ticket,
+  // marcadores internos de "sin categoría" / terceros (model.js): también SVG
+  '🤝': persona,
+  '❓': CONTENIDO_CATEGORIA.tag,
+  '🏷️': CONTENIDO_CATEGORIA.tag,
 };
+/** Claves peladas de selectores de variación: el lookup de IconoCat siempre
+ *  pasa por aquí, así ningún emoji del historial del usuario se cuela crudo. */
+const PROPIA_NORMALIZADA = {};
+for (const [e, contenido] of Object.entries(CONTENIDO_CATEGORIA_PROPIA)) {
+  PROPIA_NORMALIZADA[sinFv(e)] = contenido;
+}
 
 /** Versión exportada para pruebas: emojis de categorías con icono propio. */
 export const CATEGORIAS_CON_ICONO = Object.keys(CONTENIDO_CATEGORIA_PROPIA);
@@ -392,15 +421,14 @@ export function IconoId({ id }) {
 }
 
 /** Icono de categoría para grillas y listas: icono propio por id (categorías
- *  nuevas); si no, el mapeado de su emoji (semillas); si no, el emoji tal cual
- *  (categorías viejas personalizadas). */
+ *  nuevas); si no, el mapeado de su emoji (semillas o viejas personalizadas);
+ *  lo desconocido cae en la etiqueta genérica — nunca en el emoji crudo. */
 export function IconoCat({ icono, emoji }) {
-  const porId = icono && ICONOS_CATEGORIA[icono];
-  if (porId) return html`<svg class="icono-categoria" ...${trazo} viewBox="0 0 24 24">${porId}</svg>`;
-  const contenido = CONTENIDO_CATEGORIA_PROPIA[emoji];
-  return contenido
-    ? html`<svg class="icono-categoria" ...${trazo} viewBox="0 0 24 24">${contenido}</svg>`
-    : html`<span>${emoji || '🏷️'}</span>`;
+  const e = sinFv(emoji);
+  const contenido = (icono && ICONOS_CATEGORIA[icono])
+    || PROPIA_NORMALIZADA[e]
+    || CONTENIDO_CATEGORIA[EMOJI_A_GRUPO[e] || 'tag'];
+  return html`<svg class="icono-categoria" ...${trazo} viewBox="0 0 24 24">${contenido}</svg>`;
 }
 
 /** Contenido de cada icono de cuenta (el wrapper común lo pone IconoCuenta). */
@@ -419,8 +447,7 @@ const CONTENIDO_CUENTA = {
     <path d="M6.6 14.9h4" />`,
   deuda: html`<path d="M4.2 6.6 9.4 12l3.3-3.3 7 7" />
     <path d="M19.7 15.7v-4.6M19.7 15.7h-4.6" />`,
-  tercero: html`<circle cx="12" cy="8.1" r="3.2" />
-    <path d="M5.9 19.6c.8-3.2 3.2-4.9 6.1-4.9s5.3 1.7 6.1 4.9" />`,
+  tercero: persona,
 };
 
 /** Icono de tipo de cuenta (efectivo, bancaria, ahorro, tarjeta, deuda). */
