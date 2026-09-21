@@ -935,3 +935,110 @@ export function estructuraMes(clave, txs, S) {
   const [desde, hasta] = rangoMes(clave);
   return estructuraRango(desde, hasta, txs, S);
 }
+
+/* ============ Ahorro: la historia de una cuenta que crece ============ */
+
+/** Historia completa de una cuenta de ahorro, en su moneda: qué parte del
+ *  saldo de hoy salió de aportes tuyos, de rendimientos y qué se retiró.
+ *  Camina TODO el historial — la descomposición es "desde que existe la
+ *  cuenta", no del período que haya elegido arriba en la vista.
+ *  Aporte = transferencia recibida · retiro = transferencia enviada o gasto
+ *  directo · rendimiento = ingreso (interés del banco, premios, abonos). */
+export function historialAhorro(cuenta, txs, tasas = []) {
+  const orden = txs.filter(t => !t.eliminada && (t.cuenta === cuenta.id ||
+    (t.tipo === 'transferencia' && t.cuentaDestino === cuenta.id)))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  let aportes = 0, retiros = 0, rendimientos = 0;
+  const porMes = new Map(); // 'YYYY-MM' → { clave, aportado, retirado, rendimiento }
+  for (const tx of orden) {
+    const delta = efectoTx(tx, cuenta.id, tasas, cuenta.moneda);
+    const m = porMes.get(claveMes(tx.fecha)) || { clave: claveMes(tx.fecha), aportado: 0, retirado: 0, rendimiento: 0 };
+    if (tx.tipo === 'transferencia') {
+      if (delta > 0) { aportes += delta; m.aportado += delta; }
+      else if (delta < 0) { retiros -= delta; m.retirado -= delta; }
+    } else if (tx.tipo === 'ingreso') {
+      rendimientos += delta; m.rendimiento += delta;
+    } else if (tx.tipo === 'gasto') {
+      retiros -= delta; m.retirado -= delta; // gastar directo del ahorro también lo vacía
+    }
+    porMes.set(claveMes(tx.fecha), m);
+  }
+  const meses = [...porMes.values()].sort((a, b) => a.clave.localeCompare(b.clave));
+  // racha de meses aportando: se cuenta hacia atrás. El mes en curso, aún sin
+  // aportes, no la rompe — no penaliza estar a día 3 del mes.
+  const actual = claveMes(isoDia());
+  const desde = meses.length && meses[meses.length - 1].clave === actual && meses[meses.length - 1].aportado === 0
+    ? meses.length - 1 : meses.length;
+  let racha = 0;
+  for (let i = desde - 1; i >= 0 && meses[i].aportado > 0; i--) racha++;
+  return {
+    aportes, retiros, rendimientos,
+    saldo: (cuenta.saldoInicial || 0) + aportes + rendimientos - retiros,
+    porMes: meses, racha,
+  };
+}
+
+/** Proyección de una cuenta de ahorro: la línea de hoy hacia adelante al
+ *  ritmo del flujo neto promedio de sus últimos 6 meses con historial. Con
+ *  meta, dice en cuántos meses la cruza (null si el ritmo no alcanza). */
+export function proyeccionAhorro({ cuenta, txs, tasas = [], meses = 12 }) {
+  const h = historialAhorro(cuenta, txs, tasas);
+  const ultimos = h.porMes.slice(-6);
+  const promedio = ultimos.length
+    ? Math.round(ultimos.reduce((s, m) => s + m.aportado - m.retirado + m.rendimiento, 0) / ultimos.length)
+    : 0;
+  const actual = claveMes(isoDia());
+  const serie = [{ clave: actual, balance: h.saldo }];
+  let b = h.saldo;
+  for (let i = 1; i <= meses; i++) { b += promedio; serie.push({ clave: sumarMesClave(actual, i), balance: b }); }
+  const meta = cuenta.meta > 0 ? cuenta.meta : null;
+  let mesesParaMeta = null;
+  if (meta && h.saldo < meta && promedio > 0) {
+    // sin tope: el número dice la verdad aunque el cruce quede fuera del año
+    // que dibuja la gráfica (la vista decide si muestra mes o "más de un año")
+    mesesParaMeta = Math.ceil((meta - h.saldo) / promedio);
+  }
+  return { ...h, saldoHoy: h.saldo, promedio, serie, meta, mesesParaMeta };
+}
+
+/** Propensión marginal a guardar: de cada unidad EXTRA de ingreso, cuánta se
+ *  queda guardada. Panel mensual (ingreso vs ahorro neto — ingreso − gasto −
+ *  lo depositado a terceros, con la ganancia de terceros ya dentro del
+ *  ingreso) y regresión por mínimos cuadrados. El mes en curso se excluye
+ *  (todavía no termina de gastarse) y solo cuentan meses con movimientos:
+ *  dos meses sin abrir la app no son "cero ingreso, cero ahorro".
+ *  Devuelve null si faltan datos: <6 meses completos, ingreso sin variación
+ *  (sin dispersión no hay "marginal" que estimar) o sin ingreso registrado. */
+export function propensionMarginal(txs, S, hoyD = isoDia()) {
+  const actual = claveMes(hoyD);
+  const conMov = new Set(txs.filter(t => !t.eliminada).map(t => claveMes(t.fecha)).filter(c => c < actual));
+  if (conMov.size < 6) return null;
+  const meses = [...conMov].sort().map(clave => {
+    const st = statsMes(clave, txs, S);
+    return { clave, ingreso: st.ingreso, ahorro: st.neto };
+  });
+  const n = meses.length;
+  const mediaI = meses.reduce((s, m) => s + m.ingreso, 0) / n;
+  if (mediaI <= 0) return null;
+  const varI = meses.reduce((s, m) => s + (m.ingreso - mediaI) ** 2, 0) / n;
+  if (Math.sqrt(varI) / mediaI < 0.08) return null; // ingreso plano: la pendiente sería ruido
+  const mediaA = meses.reduce((s, m) => s + m.ahorro, 0) / n;
+  const cov = meses.reduce((s, m) => s + (m.ingreso - mediaI) * (m.ahorro - mediaA), 0) / n;
+  const varA = meses.reduce((s, m) => s + (m.ahorro - mediaA) ** 2, 0) / n;
+  const pendiente = cov / varI;
+  const r2 = varA > 0 ? (cov * cov) / (varI * varA) : 0;
+  // grupos legibles: el tercio de meses con más ingreso contra el resto — la
+  // tasa de ahorro de cada uno (ponderada por ingreso) es más robusta que la
+  // pendiente cuando hay pocos meses
+  const ord = [...meses].sort((a, b) => a.ingreso - b.ingreso);
+  const nAltos = Math.max(2, Math.round(n / 3));
+  const tasa = grupo => {
+    const ing = grupo.reduce((s, m) => s + m.ingreso, 0);
+    return ing > 0 ? grupo.reduce((s, m) => s + m.ahorro, 0) / ing : null;
+  };
+  return {
+    pendiente, r2, n, meses,
+    confiable: r2 >= 0.2 && pendiente > -0.5 && pendiente < 1.5,
+    tasaAltos: tasa(ord.slice(-nAltos)), tasaNormales: tasa(ord.slice(0, n - nAltos)),
+  };
+}

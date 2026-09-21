@@ -172,7 +172,7 @@ export default function ActividadBancaria({ cuenta, txs, tasas, cuentas = [], ca
  *  período de TODA la vista (métricas, gráficas y filas) a ese mes, igual que
  *  pides el estado de un mes a tu banco. La lista arranca en el primer
  *  movimiento de la cuenta — antes de eso no hay nada que conciliar. */
-function EncabezadoEstado({ desde, hasta, onFiltro, txs, cuenta }) {
+export function EncabezadoEstado({ desde, hasta, onFiltro, txs, cuenta }) {
   if (!onFiltro) return html`<h3>Estado de cuenta</h3>`;
   const actual = claveMesActual();
   const primerMes = txs.reduce((m, t) => {
@@ -206,7 +206,7 @@ function EncabezadoEstado({ desde, hasta, onFiltro, txs, cuenta }) {
 /** Fila del estado de cuenta: concepto + monto con signo + saldo resultante.
  *  Rojo salió, verde entró: es lo que uno espera leer en un banco. En tarjetas
  *  (modoSaldo="deuda") la línea final lee la deuda acumulada, no el saldo. */
-function FilaEstado({ tx, delta, balance, moneda, nombreCuenta, catPorId, esPagoDeuda, modoSaldo = 'queda' }) {
+export function FilaEstado({ tx, delta, balance, moneda, nombreCuenta, catPorId, esPagoDeuda, modoSaldo = 'queda' }) {
   const entra = delta >= 0;
   const cat = catPorId.get(tx.categoria);
   let concepto, sub;
@@ -233,7 +233,7 @@ function FilaEstado({ tx, delta, balance, moneda, nombreCuenta, catPorId, esPago
   </button>`;
 }
 
-function SaldoDiario({ datos, moneda }) {
+export function SaldoDiario({ datos, moneda }) {
   const [indice, setIndice] = useState(datos.length - 1);
   const punto = datos[indice];
   const W = 300, H = 180, L = 55, R = 14, T = 20, B = 26;

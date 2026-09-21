@@ -121,6 +121,8 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
   ].filter(Boolean);
   const saldo = saldoCuenta(cuenta, txs, S.tasas);
   const conLimite = cuenta.tipo === 'tarjeta' && cuenta.limite > 0;
+  const metaAhorro = cuenta.tipo === 'ahorro' && cuenta.meta > 0
+    ? { pct: Math.min(100, Math.round(saldo / cuenta.meta * 100)), falta: cuenta.meta - saldo } : null;
   return html`<div>
     <div class="tarjeta" style=${{ marginBottom: '10px' }}>
       <div style=${{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -131,6 +133,16 @@ function DetalleCuenta({ cuenta, S, txs, principal, copiar, setEditor, setDetall
           </div>
           ${conLimite && html`<div class="dato-cuenta num" style=${{ marginTop: '2px' }}>
             Límite ${fmtConMoneda(cuenta.limite, cuenta.moneda)} · Disponible ${fmtConMoneda(Math.max(0, cuenta.limite + saldo), cuenta.moneda)}
+          <//>`}
+          ${metaAhorro && html`<div style=${{ marginTop: '8px' }}>
+            <div class="barra-fila" style=${{ margin: '0 0 5px' }}>
+              <div class="pista" style=${{ height: '10px' }}>
+                <div class="lleno" style=${{ width: metaAhorro.pct + '%', background: saldo >= cuenta.meta ? 'var(--ingreso)' : 'var(--accent)' }}></div>
+              </div>
+            </div>
+            <div class="dato-cuenta num">${metaAhorro.pct}% de la meta · ${saldo >= cuenta.meta
+              ? `✓ cumplida (sobran ${fmtConMoneda(saldo - cuenta.meta, cuenta.moneda)})`
+              : `falta ${fmtConMoneda(metaAhorro.falta, cuenta.moneda)}`}</div>
           <//>`}
         </div>
         ${cuenta.moneda !== principal && html`<div class="sub num">≈ ${fmtConMoneda(saldoConvertido(cuenta, txs, S.tasas, principal), principal)}</div>`}
@@ -187,6 +199,7 @@ function EditorCuenta({ c, S, cerrar, alGuardar }) {
     moneda: c.moneda || S.ajustes.monedaPrincipal,
     saldo: c.saldoInicial != null ? enteroATexto(Math.abs(c.saldoInicial), 2) : '',
     limite: c.limite != null ? enteroATexto(c.limite, 2) : '',
+    meta: c.meta != null ? enteroATexto(c.meta, 2) : '',
     corte: c.corte || '', pagoDia: c.pagoDia || '', bolsa: c.bolsa || 'individual',
     banco: c.banco || '', numero: c.numero || '', titular: c.titular || '', notas: c.notas || '',
     enCuotas: false, numCuotas: '', primeraCuota: isoDia()
@@ -206,6 +219,7 @@ function EditorCuenta({ c, S, cerrar, alGuardar }) {
       if (!(nC >= 1 && nC <= 120)) { toast('Número de cuotas inválido (1-120)'); return; }
     }
     const limite = f.tipo === 'tarjeta' ? (textoAEntero(f.limite || '0', 2) || null) : null;
+    const meta = f.tipo === 'ahorro' ? (textoAEntero(f.meta || '0', 2) || null) : null;
     const corte = f.tipo === 'tarjeta' ? diaValido(f.corte) : null;
     const pagoDia = pasivo ? diaValido(f.pagoDia) : null;
     if (pasivo && !f.enCuotas && !pagoDia) { toast('Una deuda necesita fecha: pon el día de pago — o márcala como cuotas'); return; }
@@ -213,7 +227,7 @@ function EditorCuenta({ c, S, cerrar, alGuardar }) {
     await fin.guardarCuenta({
       id: idCuenta, tipo: f.tipo, nombre: f.nombre.trim(), moneda: f.moneda,
       saldoInicial: pasivo ? -saldo : saldo,
-      limite, corte, pagoDia,
+      limite, meta, corte, pagoDia,
       bolsa: f.tipo === 'tarjeta' ? f.bolsa : null,
       banco: f.banco.trim() || null, numero: f.numero.trim() || null,
       titular: f.titular.trim() || null, notas: f.notas.trim() || null,
@@ -296,6 +310,12 @@ function EditorCuenta({ c, S, cerrar, alGuardar }) {
             onInput=${e => set({ saldo: e.target.value })} />
         <//>
       <//>
+      ${f.tipo === 'ahorro' && html`<div>
+        <div class="dato-cuenta">Meta de ahorro (opcional)</div>
+        <input inputMode="decimal" placeholder="Ej. 5000" value=${f.meta} style=${{ textAlign: 'right' }}
+          onInput=${e => set({ meta: e.target.value })} />
+        <div class="dato-cuenta" style=${{ marginTop: '4px' }}>Con una meta, Estadísticas te muestra qué tan cerca estás y en qué mes la alcanzarías a tu ritmo de aportes.</div>
+      <//>`}
       ${f.tipo === 'tarjeta' && html`<div style=${{ display: 'grid', gap: '8px', background: 'var(--chip)', borderRadius: '14px', padding: '10px' }}>
         <div class="dato-cuenta" style=${{ fontWeight: 700 }}>CRÉDITO DE LA TARJETA</div>
         <input placeholder="Límite de crédito (opcional)" inputMode="decimal"

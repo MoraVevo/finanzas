@@ -6,10 +6,11 @@
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
-import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas, deudasAntesDeIngreso } from '../model.js';
+import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas, deudasAntesDeIngreso, propensionMarginal } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
 import { IconoCuenta, IconoCategoria, IconoCat, IconoId, ICONO_ETIQUETA, ICONO_TRANSFER, ICONO_TARJETA } from '../iconos.js';
 import ActividadBancaria, { EstadoTarjeta } from '../actividad-bancaria.js';
+import VistaAhorro from '../actividad-ahorro.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, deISO, claveMesActual, sumarMesClave } from '../util.js';
 import { MESES3, PRESETS_RANGO, rangoPreset, diaDe, finInclusivo, fmtDiaMes, etiquetaRango, serieGasto, isoD2, fmtFechaCorta } from './estadisticas/fechas.js';
 import { ChartGasto, ChartCuotasMes, ChartDeuda, Tendencia } from './estadisticas/charts.js';
@@ -254,10 +255,17 @@ function VistaRango({ S, todo }) {
     return t.length <= 10 ? t : `${monedaInfo(cod).simbolo}${fmtCompacto(v, cod)}`;
   };
 
-  // Cuentas de débito (efectivo, bancaria, ahorro): importa la liquidez — las
-  // transferencias forman parte de las entradas y salidas. Mantener las mismas
-  // fechas del selector visible.
+  // El ahorro tiene su propia historia (aportes, rendimientos, meta, hacia
+  // adelante); efectivo y bancaria siguen en la vista de liquidez.
+  // Mantener las mismas fechas del selector visible.
   const esDebito = !!cuentaObj && ['efectivo', 'bancaria', 'ahorro'].includes(cuentaObj.tipo);
+  if (cuentaObj?.tipo === 'ahorro') return html`<div>
+    <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
+    <${SelectorCuentas} S=${S} todo=${todo} cuentaScope=${cuentaScope} setCuentaScope=${setCuentaScope} />
+    <${VistaAhorro} cuenta=${cuentaObj} txs=${todo} tasas=${S.tasas}
+      cuentas=${S.cuentas} categorias=${S.categorias} desde=${desde} hasta=${hasta}
+      onFiltro=${setFiltro} />
+  </div>`;
   if (esDebito) return html`<div>
     <${CajaFechas} filtro=${filtro} onFiltro=${setFiltro} />
     <${SelectorCuentas} S=${S} todo=${todo} cuentaScope=${cuentaScope} setCuentaScope=${setCuentaScope} />
@@ -380,6 +388,8 @@ function VistaRango({ S, todo }) {
       </div>
     </div>
 
+    ${!cuentaScope && html`<${TarjetaMarginal} S=${S} todo=${todo} principal=${principal} />`}
+
     <div class="tarjeta">
       <h3>Cuentas · ahora</h3>
       ${S.cuentas.filter(c => !c.archivada && (!cuentaScope || c.id === cuentaScope)).map(c => html`<div key=${c.id} class="fila">
@@ -401,6 +411,81 @@ function VistaRango({ S, todo }) {
 
     ${esPasiva && cuentaObj.tipo === 'tarjeta' && cuentaObj.corte && html`<${EstadoTarjeta} key=${cuentaObj.id}
       cuenta=${cuentaObj} txs=${todo} tasas=${S.tasas} cuentas=${S.cuentas} categorias=${S.categorias} />`}
+  </div>`;
+}
+
+/* ---------- Propensión marginal: qué pasa con tu ingreso extra ----------
+   Cada punto es un mes: cuánto entró contra cuánto quedó guardado. La recta
+   dice cuánto de cada quetzal extra se queda guardado — la famosa pendiente
+   keynesiana, contada en quetzales. Con menos de 6 meses completos la tarjeta
+   no existe: mejor un hueco silencioso que un dato falso que asuste. */
+function TarjetaMarginal({ S, todo, principal }) {
+  const pm = propensionMarginal(todo, S);
+  if (!pm) return null;
+  const sim = monedaInfo(principal).simbolo;
+  const cien = Math.round(pm.pendiente * 100);
+  const pct = p => p == null ? '—' : Math.round(p * 100) + '%';
+  const veredicto = !pm.confiable ? null
+    : pm.pendiente < 0 ? { color: 'var(--gasto)', texto: `Cuando te entra más, gastas más que el extra: el ahorro baja ${sim}${Math.abs(cien)} por cada 100 que entran de más.` }
+    : pm.pendiente < 0.15 ? { color: 'var(--warn)', texto: `Casi todo el ingreso extra se te va: de cada 100, apenas ${cien} se quedan guardados.` }
+    : pm.pendiente < 0.6 ? { color: 'var(--accent)', texto: `De cada 100 extra que te entran, ${cien} se quedan guardados.` }
+    : { color: 'var(--ingreso)', texto: `El ingreso extra casi todo se guarda: ${cien} de cada 100. Así se construye patrimonio.` };
+  return html`<div class="tarjeta">
+    <h3>Cuando te entra más</h3>
+    <p class="ab-nota">Cada punto es un mes completo (el mes en curso no cuenta: aún no termina de gastarse). Más a la derecha, más te entró; más arriba, más quedó guardado.</p>
+    <div class="stats-grid-3">
+      <div class="stat-box"><div class="etq">Guardás por cada 100 extra</div>
+        <div class="val num" style=${{ color: veredicto?.color || 'var(--muted)' }}>${pm.confiable ? `≈ ${sim}${cien}` : '≈ …'}</div>
+        <div class="etq" style=${{ marginTop: '2px' }}>${pm.confiable ? 'de ingreso adicional' : `aún inestable con ${pm.n} meses`}</div></div>
+      <div class="stat-box"><div class="etq">Meses de más ingreso</div>
+        <div class="val num">${pct(pm.tasaAltos)}</div>
+        <div class="etq" style=${{ marginTop: '2px' }}>guardado</div></div>
+      <div class="stat-box"><div class="etq">Meses normales</div>
+        <div class="val num">${pct(pm.tasaNormales)}</div>
+        <div class="etq" style=${{ marginTop: '2px' }}>guardado</div></div>
+    </div>
+    <${DispersionMarginal} pm=${pm} principal=${principal} />
+    ${veredicto && html`<div class="dato-cuenta" style=${{ marginTop: '8px', color: veredicto.color, fontWeight: 600 }}>${veredicto.texto}</div>`}
+    ${!pm.confiable && html`<div class="dato-cuenta" style=${{ marginTop: '6px' }}>
+      Con ${pm.n} meses la recta aún baila: fiate más de la comparación entre meses normales y de más ingreso.</div>`}
+  </div>`;
+}
+
+/** Dispersión ingreso→ahorro del panel mensual, con la recta de mínimos
+ *  cuadrados encima (solo si es confiable). Los puntos con tooltip <title>
+ *  dicen el mes y sus dos valores. */
+function DispersionMarginal({ pm, principal }) {
+  const W = 300, H = 200, L = 55, R = 14, T = 14, B = 30;
+  const xs = pm.meses.map(m => m.ingreso), ys = pm.meses.map(m => m.ahorro);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys, 0), maxY = Math.max(...ys, 0);
+  const mx = (maxX - minX) * .08 || 100, my = (maxY - minY) * .12 || 100;
+  const loX = Math.max(0, minX - mx), hiX = maxX + mx, loY = minY - my, hiY = maxY + my;
+  const x = v => L + (v - loX) / (hiX - loX || 1) * (W - L - R);
+  const y = v => T + (hiY - v) / (hiY - loY || 1) * (H - T - B);
+  const pctM = c => `${MESES3[+c.slice(5, 7) - 1]} ${c.slice(0, 4)}`;
+  // recta y = a + b·ingreso clavada a las medias del panel
+  const mediaI = xs.reduce((s, v) => s + v, 0) / xs.length;
+  const mediaA = ys.reduce((s, v) => s + v, 0) / ys.length;
+  const a = mediaA - pm.pendiente * mediaI;
+  const yLinea = v => Math.max(T, Math.min(H - B, y(a + pm.pendiente * v)));
+  return html`<div class="ab-saldo">
+    <svg viewBox=${`0 0 ${W} ${H}`} role="img" aria-label="Dispersión de ingreso contra ahorro por mes">
+      ${[loY, (loY + hiY) / 2, hiY].map(v => html`<g key=${v}>
+        <line x1=${L} x2=${W - R} y1=${y(v)} y2=${y(v)} stroke="var(--line)" />
+        <text x=${L - 6} y=${y(v) + 4} text-anchor="end">${fmtCompacto(v, principal)}</text>
+      </g>`)}
+      ${minY < 0 && html`<line x1=${L} x2=${W - R} y1=${y(0)} y2=${y(0)} stroke="var(--muted)" stroke-dasharray="2 4" />`}
+      ${pm.meses.map(m => html`<circle key=${m.clave} cx=${x(m.ingreso)} cy=${y(m.ahorro)} r="4.5" fill="var(--accent)">
+        <title>${pctM(m.clave)}: entró ${fmtConMoneda(m.ingreso, principal)}, quedó ${fmtConMoneda(m.ahorro, principal)}</title>
+      <//>`)}
+      ${pm.confiable && html`<line x1=${x(loX)} y1=${yLinea(loX)} x2=${x(hiX)} y2=${yLinea(hiX)}
+        stroke="var(--transfer)" stroke-width="2" />`}
+      <line x1=${L} x2=${W - R} y1=${H - B} y2=${H - B} stroke="var(--line)" />
+      ${[loX, (loX + hiX) / 2, hiX].filter(v => v > 0).map((v, i, arr) => html`<text
+        key=${v} x=${x(v)} y=${H - B + 13} text-anchor=${i === 0 ? 'start' : i === arr.length - 1 ? 'end' : 'middle'}>
+        ${fmtCompacto(v, principal)}</text>`)}
+      <text x=${(L + W - R) / 2} y=${H - 2} text-anchor="middle">ingreso del mes →</text>
+    </svg>
   </div>`;
 }
 
