@@ -217,12 +217,16 @@ svg.icono-ui { width: 15px; height: 15px; vertical-align: -2.5px; }
 .carrusel { overflow: hidden; }
 .carrusel-track { display: flex; transition: transform .3s cubic-bezier(.2,.9,.3,1); }
 .carrusel-slide { min-width: 100%; padding: 0 2px; }
-.carrusel-puntos { display: flex; gap: 6px; justify-content: center; margin-top: 12px; }
-.carrusel-punto {
-  width: 6px; height: 6px; border-radius: 3px; background: var(--line); padding: 0;
+.carrusel-puntos { display: flex; justify-content: center; margin-top: 12px; touch-action: pan-y; /* el scrub horizontal es nuestro, el scroll vertical sigue nativo */ }
+/* El punto visible es el ::after; el botón da una zona tocable digna de un
+   dedo (6px puros son imposibles de atinarle) y padding 4px lateral hace que
+   las zonas de puntos vecinos se toquen sin encimarse. */
+.carrusel-punto { display: flex; align-items: center; justify-content: center; padding: 9px 4px; }
+.carrusel-punto::after {
+  content: ''; display: block; width: 6px; height: 6px; border-radius: 3px; background: var(--line);
   transition: all .25s ease;
 }
-.carrusel-punto.activo { width: 20px; background: var(--accent); }
+.carrusel-punto.activo::after { width: 20px; background: var(--accent); }
 
 /* ============ Pantalla Agregar ============ */
 /* height exacto (no min-height): el panel inferior queda anclado al borde bajo

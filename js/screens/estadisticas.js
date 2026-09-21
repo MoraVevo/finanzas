@@ -80,12 +80,13 @@ export default function Estadisticas() {
   // categorías, encabezado…) también mueve la vista entre "Resumen" y "Flujo
   // y futuro": el contenido sigue al dedo y al soltar, un arrastre decidido
   // cambia de vista. Las zonas con gesto horizontal propio (segmentados,
-  // carrusel de la tarjeta, gráfica de flujo, hojas) se excluyen.
+  // carrusel de la tarjeta, puntos del selector de cuentas —scrub—, gráfica
+  // de flujo, hojas) se excluyen.
   useEffect(() => {
     const raiz = raizRef.current;
     if (!raiz) return;
     let x0 = null, y0 = null, modo = null;
-    const zonaConGesto = '.seg, .tarjeta-carrusel, .flujo-chart, .sheet-fondo, input, select, textarea';
+    const zonaConGesto = '.seg, .tarjeta-carrusel, .carrusel-puntos, .flujo-chart, .sheet-fondo, input, select, textarea';
     const ini = e => {
       if (e.touches.length !== 1) return;
       if (e.target.closest?.(zonaConGesto)) return;
@@ -152,7 +153,8 @@ export default function Estadisticas() {
 
 /** Selector de alcance de cuenta para la vista Resumen: una pastilla con
  *  flechas que recorre "Todo" y cada cuenta activa (también tocando el
- *  centro avanza). Debajo, puntos indican la posición — igual que el carrusel. */
+ *  centro avanza). Debajo, puntos indican la posición: tocar un punto salta
+ *  a esa cuenta y deslizar el dedo por la fila la elige en vivo. */
 function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope }) {
   // orden por movimiento: la cuenta más usada queda primero (después de Todo)
   const conteo = id => todo.filter(t => t.cuenta === id || t.cuentaDestino === id).length;
@@ -162,6 +164,59 @@ function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope }) {
   const pos = Math.max(0, orden.indexOf(cuentaScope));
   const ir = delta => setCuentaScope(orden[(pos + delta + orden.length) % orden.length]);
   const actual = cuentaScope ? S.cuentas.find(c => c.id === cuentaScope) : null;
+  const nombreDe = id => (id ? S.cuentas.find(c => c.id === id)?.nombre : 'Todo') || 'Cuenta';
+
+  // Scrub sobre los puntos: el dedo que cruza la fila elige la cuenta bajo él
+  // en vivo — con muchas cuentas, más rápido que picar flecha por flecha. Los
+  // valores viven en refs para no re-vincular listeners a mitad del gesto.
+  const filaRef = useRef(null);
+  const ordenRef = useRef(orden);
+  const scopeRef = useRef(cuentaScope);
+  ordenRef.current = orden; scopeRef.current = cuentaScope;
+  useEffect(() => {
+    const fila = filaRef.current;
+    if (!fila) return;
+    let x0 = null, y0 = null, horizontal = null;
+    const ini = e => {
+      if (!e.isPrimary) return;
+      x0 = e.clientX; y0 = e.clientY; horizontal = null;
+    };
+    const mov = e => {
+      if (x0 == null || !e.isPrimary) return;
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      if (horizontal === null) {
+        if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+        if (Math.abs(dy) > Math.abs(dx)) { x0 = null; return; } // el scroll vertical gana
+        horizontal = true;
+      }
+      // gana el punto más cercano al dedo: arrastrar más allá de un extremo
+      // queda clavado en el primero/último, sin saltar de vuelta
+      const botones = fila.children;
+      let mejor = 0, dMin = Infinity;
+      for (let i = 0; i < botones.length; i++) {
+        const r = botones[i].getBoundingClientRect();
+        const d = Math.abs(e.clientX - (r.left + r.width / 2));
+        if (d < dMin) { dMin = d; mejor = i; }
+      }
+      const objetivo = ordenRef.current[mejor];
+      if (objetivo !== undefined && objetivo !== scopeRef.current) setCuentaScope(objetivo);
+    };
+    const fin = () => { x0 = null; horizontal = null; };
+    fila.addEventListener('pointerdown', ini);
+    fila.addEventListener('pointermove', mov);
+    // el up puede caer fuera de la fila: escucharlo en window asegura que el
+    // gesto siempre termina y un scroll posterior no hereda el estado viejo
+    window.addEventListener('pointerup', fin);
+    window.addEventListener('pointercancel', fin);
+    return () => {
+      fila.removeEventListener('pointerdown', ini);
+      fila.removeEventListener('pointermove', mov);
+      window.removeEventListener('pointerup', fin);
+      window.removeEventListener('pointercancel', fin);
+    };
+    // se vincula cuando la fila de puntos existe (con una sola cuenta no hay)
+  }, [orden.length > 1]);
+
   return html`<div style=${{ marginBottom: '12px' }}>
     <div style=${{ display: 'flex', alignItems: 'center', gap: '6px' }}>
       <button class="flecha-cuenta" aria-label="Cuenta anterior" onClick=${() => ir(-1)}>‹</button>
@@ -173,8 +228,8 @@ function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope }) {
       </button>
       <button class="flecha-cuenta" aria-label="Cuenta siguiente" onClick=${() => ir(1)}>›</button>
     </div>
-    ${orden.length > 1 && html`<div class="carrusel-puntos" style=${{ margin: '8px 0 0' }}>
-      ${orden.map(id => html`<button key=${id || 'todo'} type="button" aria-label="Alcance"
+    ${orden.length > 1 && html`<div class="carrusel-puntos" ref=${filaRef} style=${{ margin: '8px 0 0' }}>
+      ${orden.map(id => html`<button key=${id || 'todo'} type="button" aria-label=${nombreDe(id)}
         class=${'carrusel-punto' + ((id === cuentaScope) ? ' activo' : '')}
         onClick=${() => setCuentaScope(id)}><//>`)}
     <//>`}
