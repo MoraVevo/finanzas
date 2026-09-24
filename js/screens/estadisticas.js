@@ -1,12 +1,13 @@
 // Estadísticas: dos vistas — "Resumen" (gasto/ingreso del período que elijas
-// con el filtro de fecha: presets o rango personalizado) y "Flujo" (patrimonio
-// en el tiempo con los movimientos futuros que el usuario registra manualmente).
+// con el filtro de fecha: presets o rango personalizado) y "Flujo" (tu dinero
+// disponible en el tiempo — el "Todo" es el líquido de débito, como en Inicio
+// — con los movimientos futuros que el usuario registra manualmente).
 // La gráfica de flujo es interactiva: arrastra para mover, pellizca/botones para
 // zoom, con granularidad hasta diaria, y lectura al tocar.
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, recargar, toast } from '../store.js';
-import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas, deudasAntesDeIngreso, propensionMarginal } from '../model.js';
+import { statsRango, tendencia, patrimonio, saldoConvertido, saldoCuenta, flujoEfectivo, fechasRepetir, convertir, estructuraRango, TIPOS_CUENTA, pagosTarjeta, cuotasPorMes, serieSaldos, planCuotas, deudasAntesDeIngreso, propensionMarginal, cuentaDebito } from '../model.js';
 import { Sheet, PickerCuentas, GridCategorias, Segmentado } from '../ui.js';
 import { IconoCuenta, IconoCategoria, IconoCat, IconoId, ICONO_ETIQUETA, ICONO_TRANSFER, ICONO_TARJETA, ICONO_CALENDARIO } from '../iconos.js';
 import ActividadBancaria, { EstadoTarjeta } from '../actividad-bancaria.js';
@@ -151,11 +152,13 @@ export default function Estadisticas() {
   </div>`;
 }
 
-/** Selector de alcance de cuenta para la vista Resumen: una pastilla con
+/** Selector de alcance de cuenta para las vistas: una pastilla con
  *  flechas que recorre "Todo" y cada cuenta activa (también tocando el
  *  centro avanza). Debajo, puntos indican la posición: tocar un punto salta
- *  a esa cuenta y deslizar el dedo por la fila la elige en vivo. */
-function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope }) {
+ *  a esa cuenta y deslizar el dedo por la fila la elige en vivo.
+ *  `todoDebito`: el "Todo" muestra el dinero líquido (como Inicio) en vez
+ *  del patrimonio — así lo lee la vista Flujo. */
+function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope, todoDebito = false }) {
   // orden por movimiento: la cuenta más usada queda primero (después de Todo)
   const conteo = id => todo.filter(t => t.cuenta === id || t.cuentaDestino === id).length;
   const activas = S.cuentas.filter(c => !c.archivada)
@@ -242,7 +245,11 @@ function SelectorCuentas({ S, todo, cuentaScope, setCuentaScope }) {
         ${actual
           ? html`<${IconoCuenta} tipo=${actual.tipo} /> <span>${actual.nombre}</span>
               <span class="num" style=${{ color: 'var(--muted)', fontWeight: 600 }}>${fmtConMoneda(saldoCuenta(actual, todo, S.tasas), actual.moneda)}</span>`
-          : html`<span>Todo</span><span class="num" style=${{ color: 'var(--muted)', fontWeight: 600 }}>· ${fmtConMoneda(patrimonio(S.cuentas, todo, S.tasas, S.ajustes.monedaPrincipal).total, S.ajustes.monedaPrincipal)}</span>`}
+          : html`<span>Todo</span><span class="num" style=${{ color: 'var(--muted)', fontWeight: 600 }}>· ${fmtConMoneda(
+              todoDebito
+                ? S.cuentas.filter(cuentaDebito).reduce((s, c) => s + saldoConvertido(c, todo, S.tasas, S.ajustes.monedaPrincipal), 0)
+                : patrimonio(S.cuentas, todo, S.tasas, S.ajustes.monedaPrincipal).total,
+              S.ajustes.monedaPrincipal)}</span>`}
       </button>
       <button class="flecha-cuenta" aria-label="Cuenta siguiente" onClick=${() => ir(1)}>›</button>
     </div>
@@ -566,13 +573,14 @@ function DispersionMarginal({ pm, principal }) {
 function VistaFlujo({ S, todo }) {
   const principal = S.ajustes.monedaPrincipal;
   const [horizonte, setHorizonte] = useState(1);
-  const [cuentaScope, setCuentaScope] = useState(null); // null = patrimonio
+  const [cuentaScope, setCuentaScope] = useState(null); // null = todo tu débito (como Inicio)
   const [grafica, setGrafica] = useState('linea'); // 'linea' | 'pie' | 'barras'
   const [editor, setEditor] = useState(null);
 
   const fl = useMemo(() => flujoEfectivo({
     cuentas: S.cuentas, txs: todo, tasas: S.tasas, principal,
-    futuros: S.futuros, fijos: S.fijos, cuotas: S.cuotas, pasadoMeses: 6, futuroMeses: horizonte, cuentaId: cuentaScope
+    futuros: S.futuros, fijos: S.fijos, cuotas: S.cuotas, pasadoMeses: 6, futuroMeses: horizonte,
+    cuentaId: cuentaScope, soloDebito: !cuentaScope
   }), [S.cuentas, todo, S.tasas, S.futuros, S.fijos, S.cuotas, horizonte, cuentaScope]);
 
   const final = fl.serie.at(-1);
@@ -600,17 +608,11 @@ function VistaFlujo({ S, todo }) {
   };
 
   return html`<div>
-    <div class="chips-scroll" style=${{ marginBottom: '10px' }}>
-      <button class=${'chip' + (!cuentaScope ? ' sel' : '')} onClick=${() => setCuentaScope(null)}><${IconoId} id="globo" /> Patrimonio</button>
-      ${S.cuentas.filter(c => !c.archivada).map(c => html`
-        <button key=${c.id} class=${'chip' + (cuentaScope === c.id ? ' sel' : '')} onClick=${() => setCuentaScope(c.id)}>
-          <${IconoCuenta} tipo=${c.tipo} /> ${c.nombre}
-        </button>`)}
-    </div>
+    <${SelectorCuentas} S=${S} todo=${todo} cuentaScope=${cuentaScope} setCuentaScope=${setCuentaScope} todoDebito />
 
     <div class="tarjeta" style=${{ textAlign: 'center', padding: '18px 14px' }}>
       <div style=${{ fontSize: '12px', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-        ${nombreScope ? `Hoy en ${nombreScope}` : 'Hoy tienes'}
+        ${nombreScope ? `Hoy en ${nombreScope}` : 'Hoy tienes disponible'}
       </div>
       <div class="num" style=${{ fontSize: '30px', fontWeight: 800 }}>${fmtConMoneda(fl.balanceHoy, principal)}</div>
       <${Segmentado} opciones=${HORIZONTES} valor=${horizonte} onChange=${setHorizonte} />
@@ -630,7 +632,7 @@ function VistaFlujo({ S, todo }) {
     <div class="tarjeta">
       <${Segmentado} opciones=${[['linea', 'Línea'], ['pie', 'Pie'], ['barras', 'Barras']]} valor=${grafica} onChange=${setGrafica} />
       ${grafica === 'linea' && html`<div>
-        <h3 style=${{ fontSize: '11px' }}>${nombreScope ? `${nombreScope} en el tiempo` : 'Tu patrimonio en el tiempo'}</h3>
+        <h3 style=${{ fontSize: '11px' }}>${nombreScope ? `${nombreScope} en el tiempo` : 'Tu dinero disponible en el tiempo'}</h3>
         <${ChartFlujo} fl=${fl} principal=${principal} />
         <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
           <span>▬ Real</span><span>┄ Registrado por ti</span>
@@ -646,7 +648,7 @@ function VistaFlujo({ S, todo }) {
         <button class="chip" onClick=${() => setEditor({ tipo: 'ingreso', moneda: principal, fecha: isoDia() })}>＋ Agregar</button>
       </div>
       ${fl.lista.map(f => {
-        const esCargoFijo = !!f.esCargoTarjeta;   // fijo cargado a tarjeta (patrimonio: no mueve la línea)
+        const esCargoFijo = !!f.esCargoTarjeta;   // fijo cargado a tarjeta: no mueve tu disponible (lo mueve su pago)
         const destinoF = !f.esFijo && f.tipo === 'transferencia' ? S.cuentas.find(c => c.id === f.cuentaDestino) : null;
         const esDeuda = f.tipo === 'transferencia' && destinoF && (destinoF.tipo === 'tarjeta' || destinoF.tipo === 'deuda');
         const positivo = f.esPagoTarjeta || f.tipo === 'ingreso' || esCargoFijo;

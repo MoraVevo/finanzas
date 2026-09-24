@@ -17,6 +17,11 @@ export const TIPOS_CUENTA = {
  *  acumulan lo depositado, pero ese dinero no es tuyo. */
 export const cuentaEnPatrimonio = c => !!c && !c.archivada && c.tipo !== 'tercero';
 
+/** Cuentas de débito: tu dinero líquido (efectivo, banco, ahorro). Es el
+ *  alcance que usa Inicio ("Dinero disponible") y ahora también el "Todo"
+ *  del Flujo: tarjetas y deudas no restan del líquido hasta que las pagas. */
+export const cuentaDebito = c => cuentaEnPatrimonio(c) && c.tipo !== 'tarjeta' && c.tipo !== 'deuda';
+
 /**
  * Efecto de una transacción sobre una cuenta, en la moneda de esa cuenta.
  * Gasto: -monto · Ingreso: +monto · Transferencia: origen -monto, destino +montoDestino.
@@ -273,13 +278,14 @@ export function fechasRepetir(fechaBase, frecuencia, n = 6) {
 
 /**
  * Serie DIARIA de saldos reales (en moneda principal) entre dos fechas.
- * cuentaId null = patrimonio total (cuentas propias activas); si no, esa cuenta sola.
+ * cuentaId null = patrimonio total (cuentas propias activas) o, con
+ * soloDebito, únicamente el dinero líquido (como Inicio); si no, esa cuenta sola.
  * Un solo recorrido de transacciones: rápida incluso con años de historial.
  */
-export function serieSaldos({ cuentas, txs, tasas, principal, desdeD, hastaD, cuentaId = null }) {
+export function serieSaldos({ cuentas, txs, tasas, principal, desdeD, hastaD, cuentaId = null, soloDebito = false }) {
   const lista = cuentaId
     ? cuentas.filter(c => c.id === cuentaId)
-    : cuentas.filter(cuentaEnPatrimonio);
+    : cuentas.filter(soloDebito ? cuentaDebito : cuentaEnPatrimonio);
   const ordenadas = [...txs].sort((a, b) => a.fecha.localeCompare(b.fecha));
 
   // saldo de cada cuenta al día "desdeD" (transacciones anteriores ya aplicadas)
@@ -310,15 +316,29 @@ export function serieSaldos({ cuentas, txs, tasas, principal, desdeD, hastaD, cu
 
 /**
  * Deltas futuros por fecha para un alcance: cuentaId null = patrimonio
- * (las transferencias son neutras); si no, la cuenta elegida (la transferencia
- * resta en el origen y suma en el destino).
+ * (las transferencias son neutras) o, con debitoIds (Set), el dinero líquido
+ * de Inicio (solo cuenta lo que entra/sale de las cuentas de débito); si no,
+ * la cuenta elegida (la transferencia resta en el origen y suma en el destino).
  */
-export function deltasFuturos(futuros, tasas, principal, hoyD, cuentaId = null) {
+export function deltasFuturos(futuros, tasas, principal, hoyD, cuentaId = null, debitoIds = null) {
   const evs = [];
   for (const f of futuros) {
     if (f.fecha <= hoyD) continue;
     const conv = convertir(f.monto, f.moneda, principal, tasas, hoyD);
-    if (!cuentaId) {
+    if (!cuentaId && debitoIds) {
+      // alcance líquido: un gasto en tarjeta no mueve el débito (lo mueve su
+      // pago); sin cuenta elegida se cuenta igual — son las notas rápidas
+      if (f.tipo === 'transferencia') {
+        let d = 0;
+        if (f.cuenta && debitoIds.has(f.cuenta)) d -= conv;
+        if (f.cuentaDestino && debitoIds.has(f.cuentaDestino)) {
+          d += convertir(f.montoDestino ?? f.monto, f.monedaDestino || f.moneda, principal, tasas, hoyD);
+        }
+        evs.push({ fecha: f.fecha, delta: d, f }); // incluso 0: se lista igual
+      } else if (!f.cuenta || debitoIds.has(f.cuenta)) {
+        evs.push({ fecha: f.fecha, delta: f.tipo === 'ingreso' ? conv : -conv, f });
+      }
+    } else if (!cuentaId) {
       if (f.tipo === 'ingreso') evs.push({ fecha: f.fecha, delta: conv, f });
       else if (f.tipo === 'gasto') evs.push({ fecha: f.fecha, delta: -conv, f });
       else evs.push({ fecha: f.fecha, delta: 0, f }); // transferencia: neutra para el patrimonio
@@ -339,23 +359,29 @@ export function deltasFuturos(futuros, tasas, principal, hoyD, cuentaId = null) 
 
 /**
  * Resumen de flujo con registros futuros del usuario.
- * scope: null (patrimonio) o id de cuenta. Devuelve la lista con saldo
- * acumulado y métricas del horizonte elegido.
+ * scope: id de cuenta, o null con soloDebito (el "Todo" líquido de Inicio:
+ * efectivo + banco + ahorro) o null sin más (patrimonio completo). Devuelve
+ * la lista con saldo acumulado y métricas del horizonte elegido.
  */
-export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fijos = [], cuotas = [], pasadoMeses = 6, futuroMeses = 6, cuentaId = null }) {
+export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fijos = [], cuotas = [], pasadoMeses = 6, futuroMeses = 6, cuentaId = null, soloDebito = false }) {
   const hoyD = isoDia();
   const clave = claveMes(hoyD);
   const desdeD = sumarMesClave(clave, -pasadoMeses) + '-01';
   const finClave = sumarMesClave(clave, futuroMeses);
   const hastaD = `${finClave.slice(0, 4)}-${finClave.slice(5, 7)}-${p2f(finDeMes(+finClave.slice(0, 4), +finClave.slice(5, 7) - 1))}`;
 
-  const seriePasado = serieSaldos({ cuentas, txs, tasas, principal, desdeD, hastaD, cuentaId });
-  const balanceHoy = patrimonio(cuentas, txs, tasas, principal).total;
+  const seriePasado = serieSaldos({ cuentas, txs, tasas, principal, desdeD, hastaD, cuentaId, soloDebito });
   const balanceHoyScope = cuentaId
     ? (seriePasado.find(p => p.fecha === hoyD) || seriePasado.at(-1) || { balance: 0 }).balance
-    : balanceHoy;
+    : (soloDebito
+      ? cuentas.filter(cuentaDebito).reduce((s, c) => s + saldoConvertido(c, txs, tasas, principal), 0)
+      : patrimonio(cuentas, txs, tasas, principal).total);
+  // alcance líquido para los deltas: solo lo que entra/sale de las de débito
+  const debitoIds = (!cuentaId && soloDebito)
+    ? new Set(cuentas.filter(cuentaDebito).map(c => c.id))
+    : null;
 
-  const eventos = deltasFuturos(futuros, tasas, principal, hoyD, cuentaId)
+  const eventos = deltasFuturos(futuros, tasas, principal, hoyD, cuentaId, debitoIds)
     .filter(e => e.fecha <= hastaD);
   // Fijos: se proyectan solos dentro del horizonte. Un gasto fijo cargado a
   // tarjeta/deuda no mueve el patrimonio (cargo y deuda se compensan) — se
@@ -425,7 +451,11 @@ export function flujoEfectivo({ cuentas, txs, tasas, principal, futuros = [], fi
     for (const o of pagosCuota(p, hoyD, hastaD)) {
       eventos.push({
         fecha: o.fecha,
-        delta: cuentaId && p.pagaCon ? o.monto : 0,
+        // con débito asociado la cuota es una transferencia real: suma al
+        // alcance de la tarjeta y RESTA del líquido del "Todo" de Inicio
+        delta: cuentaId
+          ? (p.pagaCon ? o.monto : 0)
+          : (debitoIds && p.pagaCon ? -o.monto : 0),
         f: {
           id: 'cuota-' + p.id + '-' + o.k, esFijo: true, esCuota: true, cuotaK: o.k, cuotaN: info.n,
           tipo: cuentaId && p.pagaCon ? 'ingreso' : 'transferencia',

@@ -3,7 +3,7 @@
 import { html, useState, useEffect } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast } from '../store.js';
-import { saldoConvertido, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo, planCuotas, cuentaEnPatrimonio, fechasFijo } from '../model.js';
+import { saldoConvertido, statsMes, TIPOS_CUENTA, convertir, poderAdquisitivo, planCuotas, cuentaEnPatrimonio, cuentaDebito, fechasFijo } from '../model.js';
 import { FilaTx, Sheet, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_AJUSTES } from '../iconos.js';
 import { fmtConMoneda, fmtFecha, claveMesActual, rangoMes, fmtMesLargo, sumarMesClave, uid, textoAEntero, enteroATexto, isoDia } from '../util.js';
@@ -43,7 +43,7 @@ export default function Hoy() {
 
   /* ---- Tarjeta principal: dinero real y si alcanza hasta el próximo ingreso ---- */
   const activas = S.cuentas.filter(c => !c.archivada);
-  const debito = activas.filter(c => cuentaEnPatrimonio(c) && c.tipo !== 'tarjeta' && c.tipo !== 'deuda');
+  const debito = activas.filter(cuentaDebito);
   const tarjetas = activas.filter(c => c.tipo === 'tarjeta');
   const prestamos = activas.filter(c => c.tipo === 'deuda');
   const suma = lista => lista.reduce((s, c) => s + saldoConvertido(c, txs, S.tasas, principal), 0);
@@ -286,7 +286,7 @@ export function EditorCuota({ p, S, cerrar }) {
   });
   const set = x => setD({ ...d, ...x });
   const pasivas = S.cuentas.filter(c => !c.archivada && (c.tipo === 'tarjeta' || c.tipo === 'deuda'));
-  const debitos = S.cuentas.filter(c => cuentaEnPatrimonio(c) && c.tipo !== 'tarjeta' && c.tipo !== 'deuda');
+  const debitos = S.cuentas.filter(cuentaDebito);
   const n = parseInt(d.numCuotas, 10);
   const montoTotal = textoAEntero(d.montoTotal || '0', 2);
   const preview = montoTotal && n >= 1
@@ -402,7 +402,7 @@ function EditorFijo({ f, S, cerrar }) {
   const DIAS_SEM = [['0', 'D'], ['1', 'L'], ['2', 'M'], ['3', 'X'], ['4', 'J'], ['5', 'V'], ['6', 'S']];
   const fuenteObj = S.cuentas.find(c => c.id === d.fuente);
   const fuentePasiva = fuenteObj && (fuenteObj.tipo === 'tarjeta' || fuenteObj.tipo === 'deuda');
-  const debitos = S.cuentas.filter(c => cuentaEnPatrimonio(c) && c.tipo !== 'tarjeta' && c.tipo !== 'deuda');
+  const debitos = S.cuentas.filter(cuentaDebito);
   const cuentaDest = S.cuentas.find(c => c.id === d.cuenta);
 
   const guardar = async () => {
