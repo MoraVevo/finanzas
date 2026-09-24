@@ -281,14 +281,21 @@ export function FilaTx({ tx, cuentas, categorias, onClick, perspectiva = null })
    `sinTerceros`: para gastos e ingresos, donde una cuenta externa no tiene
    sentido (lo de terceros se mueve con transferencias). Las de terceros que
    sí aparecen (transferencias, filtros) van SIEMPRE al final: no son tuyas y
-   no deben robar el primer toque. */
-export function PickerCuentas({ titulo = 'Elegir cuenta', cuentas, txs, tasas = [], onPick, onClose, excluir, sinSaldo = false, sinTerceros = false }) {
+   no deben robar el primer toque.
+   `frecuencia` (Map id -> n): ordena por uso real de mayor a menor antes que
+   nada — en transferencias enseña primero lo que el usuario más mueve; una
+   cuenta de terceros solo sube si de verdad se usa, y las sin uso siguen
+   cayendo al final. */
+export function PickerCuentas({ titulo = 'Elegir cuenta', cuentas, txs, tasas = [], onPick, onClose, excluir, sinSaldo = false, sinTerceros = false, frecuencia = null }) {
   const [q, setQ] = useState('');
   const lista = cuentas
     .filter(c => !c.archivada && c.id !== excluir)
     .filter(c => !sinTerceros || c.tipo !== 'tercero')
     .filter(c => !q || (c.nombre + ' ' + (c.banco || '') + ' ' + (c.numero || '')).toLowerCase().includes(q.toLowerCase()))
-    .sort((a, b) => (a.tipo === 'tercero' ? 1 : 0) - (b.tipo === 'tercero' ? 1 : 0) || a.nombre.localeCompare(b.nombre));
+    .sort((a, b) =>
+      (frecuencia ? (frecuencia.get(b.id) || 0) - (frecuencia.get(a.id) || 0) : 0) ||
+      (a.tipo === 'tercero' ? 1 : 0) - (b.tipo === 'tercero' ? 1 : 0) ||
+      a.nombre.localeCompare(b.nombre));
   return html`<${Sheet} titulo=${titulo} onClose=${onClose}>
     <input type="search" placeholder="Buscar por nombre, banco o número…" value=${q} onInput=${e => setQ(e.target.value)} />
     <div style=${{ marginTop: '8px' }}>

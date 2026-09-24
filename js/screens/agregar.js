@@ -5,7 +5,7 @@
 import { html, useState, useEffect, useMemo, useRef } from '../../vendor/preact-standalone.module.js';
 import fin from '../db.js';
 import { useStore, nav, recargar, toast, getState } from '../store.js';
-import { convertir, categoriasFrecuentes, motivosRecientes, saldoCuenta, efectoTx } from '../model.js';
+import { convertir, categoriasFrecuentes, motivosRecientes, frecTransferencias, saldoCuenta, efectoTx } from '../model.js';
 import { Teclado, PickerCuentas, GridCategorias, InputEtiquetas, SelectorFecha, Comprobantes, Segmentado } from '../ui.js';
 import { IconoCuenta, ICONO_BASURA } from '../iconos.js';
 import { uid, isoLocal, textoAEntero, fmtConMoneda, monedaInfo, comprimirImagen } from '../util.js';
@@ -35,7 +35,7 @@ export default function Agregar({ txId }) {
         setDatos({
           tipo: tx.tipo, moneda: tx.moneda,
           montoStr: (tx.monto / 10 ** dec).toFixed(dec).replace(/\.?0+$/, m => (m === '.' + '0'.repeat(dec) ? '' : m)),
-          cuenta: tx.cuenta, destino: tx.cuentaDestino || null, montoDestinoStr: '',
+          cuenta: tx.cuenta, destino: (tx.cuentaDestino && tx.cuentaDestino !== tx.cuenta) ? tx.cuentaDestino : null, montoDestinoStr: '',
           categoria: tx.categoria || null, etiquetas: tx.etiquetas || [], motivo: tx.motivo || '',
           fecha: tx.fecha, nuevas: [], existentes, editando: tx
         });
@@ -83,6 +83,12 @@ export default function Agregar({ txId }) {
       ...delTipo.filter(c => !frec.includes(c.id)).sort((a, b) => a.nombre.localeCompare(b.nombre))
     ];
   }, [datos.tipo, txs, S.categorias]);
+
+  // Transferencias: el picker de origen se ordena por las cuentas que más
+  // veces fueron origen, y el de destino por las que más reciben DESDE el
+  // origen elegido (cambia con cada origen). Silencioso: la UI no indica
+  // el criterio ni muestra conteos.
+  const frecTrans = useMemo(() => frecTransferencias(txs), [txs]);
 
   const tecla = k => {
     if (k === 'del') return set({ montoStr: datos.montoStr.slice(0, -1) });
@@ -191,16 +197,16 @@ export default function Agregar({ txId }) {
     // en gasto/ingreso una cuenta de terceros no tiene sentido: lo suyo se
     // mueve con transferencias — el default cae siempre en una cuenta propia
     const candidatas = t === 'transferencia' ? activas : activas.filter(c => c.tipo !== 'tercero');
-    set({
-      tipo: t,
-      cuenta: (t === 'transferencia'
-        ? activas.find(c => c.id === ult.transferencia)
-        : candidatas.find(c => c.id === ult[t]))?.id || candidatas[0]?.id || null,
-      destino: t === 'transferencia'
-        ? (activas.find(c => c.id === ult.transferDestino)?.id || activas[1]?.id || null)
-        : null,
-      montoDestinoStr: ''
-    });
+    const cuenta = (t === 'transferencia'
+      ? activas.find(c => c.id === ult.transferencia)
+      : candidatas.find(c => c.id === ult[t]))?.id || candidatas[0]?.id || null;
+    // transferir a la misma cuenta no existe: si el último destino queda
+    // igual al origen nuevo, se cae a la primera cuenta distinta
+    const destino = t === 'transferencia'
+      ? (activas.find(c => c.id === ult.transferDestino && c.id !== cuenta)?.id
+        || activas.find(c => c.id !== cuenta)?.id || null)
+      : null;
+    set({ tipo: t, cuenta, destino, montoDestinoStr: '' });
   };
 
   const simbolo = monedaInfo(moneda).simbolo;
@@ -314,7 +320,12 @@ export default function Agregar({ txId }) {
         ? (picker === 'cuenta' ? '¿Desde qué cuenta?' : '¿Hacia qué cuenta?')
         : '¿Con qué cuenta?'}
       cuentas=${S.cuentas} txs=${txs} tasas=${S.tasas}
-      excluir=${picker === 'cuenta' ? null : datos.cuenta}
+      excluir=${picker === 'cuenta'
+        ? (datos.tipo === 'transferencia' ? datos.destino : null)
+        : datos.cuenta}
+      frecuencia=${datos.tipo === 'transferencia'
+        ? (picker === 'cuenta' ? frecTrans.origen : (frecTrans.destinos.get(datos.cuenta) || null))
+        : null}
       sinTerceros=${datos.tipo !== 'transferencia' && picker === 'cuenta'}
       onPick=${c => {
         const p = picker === 'cuenta' ? { cuenta: c.id } : { destino: c.id };

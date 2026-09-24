@@ -197,6 +197,24 @@ export function motivosRecientes(txs, limite = 30) {
   return [...vistos];
 }
 
+/** Uso real de cuentas en transferencias: veces como origen y, por origen,
+ *  veces como destino. Sirve para ordenar los pickers de transferencia por
+ *  frecuencia (silencioso: la UI nunca anuncia el criterio). Las tx raras
+ *  con origen === destino (legado) no enseñan nada y se ignoran. */
+export function frecTransferencias(txs) {
+  const origen = new Map();    // cuentaId -> veces que fue el origen (salida)
+  const destinos = new Map();  // origenId -> Map(destinoId -> veces que recibió de ese origen)
+  for (const tx of txs) {
+    if (tx.tipo !== 'transferencia' || !tx.cuentaDestino || tx.cuentaDestino === tx.cuenta) continue;
+    const { cuenta: o, cuentaDestino: d } = tx;
+    origen.set(o, (origen.get(o) || 0) + 1);
+    const fila = destinos.get(o) || new Map();
+    fila.set(d, (fila.get(d) || 0) + 1);
+    destinos.set(o, fila);
+  }
+  return { origen, destinos };
+}
+
 
 /* ============ Flujo de efectivo: registros futuros del usuario ============ */
 

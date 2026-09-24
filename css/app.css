@@ -236,12 +236,13 @@ svg.icono-ui { width: 15px; height: 15px; vertical-align: -2.5px; }
 }
 .carrusel-punto.activo::after { width: 20px; background: var(--accent); }
 /* Tick óptico: cada punto destella al ganar la selección — cruzar la fila
-   con el dedo deja esa "vibración" visual (iOS no expone vibración web,
-   así que el destello es la pista ahí; Android suma el navigator.vibrate). */
+   con el dedo deja esa "vibración" visual. iOS no expone vibración web
+   (solo Chromium la tiene), así que este destello ES la pista en iPhone:
+   escala generosa + parpadeo de opacidad para leerse de reojo. */
 @media (prefers-reduced-motion: no-preference) {
-  .carrusel-punto.activo::after { animation: punto-tick .16s ease; }
+  .carrusel-punto.activo::after { animation: punto-tick .2s ease; }
 }
-@keyframes punto-tick { from { transform: scale(1.55); } to { transform: scale(1); } }
+@keyframes punto-tick { from { transform: scale(1.9); opacity: .5; } to { transform: scale(1); opacity: 1; } }
 
 /* ============ Pantalla Agregar ============ */
 /* height exacto (no min-height): el panel inferior queda anclado al borde bajo
