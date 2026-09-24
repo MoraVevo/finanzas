@@ -14,7 +14,7 @@ import ActividadBancaria, { EstadoTarjeta } from '../actividad-bancaria.js';
 import VistaAhorro from '../actividad-ahorro.js';
 import { fmtConMoneda, fmtMonto, fmtCompacto, monedaInfo, textoAEntero, enteroATexto, uid, isoDia, isoLocal, deISO, claveMesActual, sumarMesClave } from '../util.js';
 import { MESES3, PRESETS_RANGO, rangoPreset, diaDe, finInclusivo, fmtDiaMes, etiquetaRango, serieGasto, isoD2, fmtFechaCorta } from './estadisticas/fechas.js';
-import { ChartGasto, ChartCuotasMes, ChartDeuda, Tendencia } from './estadisticas/charts.js';
+import { ChartGasto, ChartCuotasMes, ChartDeuda, Tendencia, EtiquetaGrafica } from './estadisticas/charts.js';
 
 /* ---------- Filtro de período ---------- */
 
@@ -973,8 +973,10 @@ function ChartPie({ S, fl, principal }) {
   </div>`;
 }
 
-/* ---------- Barras: ingreso vs gasto proyectado, mes a mes ---------- */
+/* ---------- Barras: ingreso vs gasto proyectado, mes a mes ----------
+   Toca un mes: entra, sale y neto de lo que registraste para ese mes. */
 function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
+  const [toc, setToc] = useState(null);
   const porMes = new Map();
   for (const f of fl.lista) {
     const clave = f.fecha.slice(0, 7);
@@ -989,19 +991,29 @@ function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
   const max = Math.max(1, ...meses.flatMap(([, e]) => [e.in, e.out]));
   const W = 320, H = 170, PB = 26, PT = 8;
   const bw = W / Math.max(1, meses.length);
+  const n = meses.length;
+  const mesToc = toc != null && toc < n ? meses[toc] : null;
 
   return html`<div>
     <h3 style=${{ fontSize: '11px' }}>Ingreso vs gasto proyectado · por mes</h3>
-    <svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: 'auto', aspectRatio: `${W} / ${H}` }}>
+    <div style=${{ position: 'relative' }} onClick=${e => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const vx = (e.clientX - r.left) / r.width * W;
+      const i = Math.max(0, Math.min(n - 1, Math.floor(vx / bw)));
+      setToc(t => (t === i ? null : i));
+    }}>
+    <svg viewBox=${`0 0 ${W} ${H}`} style=${{ width: '100%', height: 'auto', aspectRatio: `${W} / ${H}`, display: 'block' }}>
       ${meses.map(([clave, e], i) => {
         const hi = (H - PB - PT) * e.in / max;
         const ho = (H - PB - PT) * e.out / max;
         const nomMes = MESES3[+clave.slice(5, 7) - 1] + (clave.slice(2, 4));
         return html`<g key=${clave}>
-          <rect x=${i * bw + 3} y=${H - PB - hi} width=${bw / 2 - 4} height=${Math.max(2, hi)} rx="3" fill="var(--ingreso)" opacity=".9">
+          <rect x=${i * bw + 3} y=${H - PB - hi} width=${bw / 2 - 4} height=${Math.max(2, hi)} rx="3" fill="var(--ingreso)" opacity=".9"
+            stroke=${toc === i ? 'var(--text)' : 'none'} stroke-width="0.8">
             <title>Ingresos ${nomMes}: ${fmtConMoneda(e.in, principal)}</title>
           </rect>
-          <rect x=${i * bw + bw / 2 + 1} y=${H - PB - ho} width=${bw / 2 - 4} height=${Math.max(2, ho)} rx="3" fill="var(--gasto)" opacity=".9">
+          <rect x=${i * bw + bw / 2 + 1} y=${H - PB - ho} width=${bw / 2 - 4} height=${Math.max(2, ho)} rx="3" fill="var(--gasto)" opacity=".9"
+            stroke=${toc === i ? 'var(--text)' : 'none'} stroke-width="0.8">
             <title>Gastos ${nomMes}: ${fmtConMoneda(e.out, principal)}</title>
           </rect>
           <text x=${i * bw + bw / 2} y=${H - 14} textAnchor="middle" style=${{ fontSize: '7px' }} fill="var(--muted)">${nomMes}</text>
@@ -1009,6 +1021,15 @@ function ChartBarrasFuturo({ S, fl, principal, horizonte }) {
         </g>`;
       })}
     </svg>
+    ${mesToc && html`<${EtiquetaGrafica} x=${toc * bw + bw / 2} y=${PT + (H - PB - PT) * (1 - Math.max(mesToc[1].in, mesToc[1].out) / max)}
+      titulo=${MESES3[+mesToc[0].slice(5, 7) - 1] + ' ' + mesToc[0].slice(0, 4)} W=${W} H=${H}
+      filas=${[
+        { t: '+' + fmtConMoneda(mesToc[1].in, principal), color: 'var(--ingreso)' },
+        { t: '−' + fmtConMoneda(mesToc[1].out, principal), color: 'var(--gasto)' },
+        { t: 'Neto ' + (mesToc[1].in - mesToc[1].out >= 0 ? '+' : '−') + fmtConMoneda(Math.abs(mesToc[1].in - mesToc[1].out), principal),
+          color: mesToc[1].in - mesToc[1].out >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }
+      ]} />`}
+    <//>
     <div style=${{ display: 'flex', gap: '14px', justifyContent: 'center', fontSize: '12px', color: 'var(--muted)', marginTop: '2px' }}>
       <span class="leyenda"><i style=${{ background: 'var(--ingreso)' }}></i> Ingresos</span><span class="leyenda"><i style=${{ background: 'var(--gasto)' }}></i> Gastos</span>
     </div>
@@ -1207,20 +1228,24 @@ function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, v
   // Swipe que SIGUE AL DEDO con pointer events (patrón probado en iOS por el
   // Segmentado y el Sheet): el carrusel va con el dedo y al soltar, un
   // arrastre decidido pasa a la vista contigua. Se navega deslizando o
-  // tocando los puntos inferiores.
+  // tocando los puntos inferiores. La captura del pointer NO nace con el
+  // toque: se toma al confirmarse el gesto horizontal — si no, el carrusel
+  // se tragaría el click de todo lo que vive dentro (las gráficas se tocan
+  // para leer sus etiquetas). Tras un desliz sí se suprime el click que
+  // el navegador deriva del gesto.
   useEffect(() => {
     const card = cardRef.current;
     const track = trackRef.current;
     if (!card || !track) return;
     // candado de dirección: la primera decisión (vertical vs horizontal) es
     // definitiva — un scroll vertical con deriva horizontal NUNCA cambia slide
-    let activo = false, vertical = null, x0 = 0, y0 = 0, idx0 = 0, w = 1;
+    let activo = false, vertical = null, x0 = 0, y0 = 0, idx0 = 0, w = 1, capturo = false, suprimirClick = false;
     const abajo = e => {
       if (!e.isPrimary) return;
-      activo = true; vertical = null; x0 = e.clientX; y0 = e.clientY;
+      activo = true; vertical = null; capturo = false;
+      x0 = e.clientX; y0 = e.clientY;
       w = card.getBoundingClientRect().width || 1;
       idx0 = orden.indexOf(vistaRef.current);
-      try { card.setPointerCapture(e.pointerId); } catch { /* sin captura: el gesto igual funciona */ }
     };
     const mover = e => {
       if (!activo || !e.isPrimary) return;
@@ -1229,6 +1254,10 @@ function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, v
         if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return; // zona muerta inicial
         vertical = Math.abs(dy) > Math.abs(dx);             // decide el dominante
         if (vertical) return;                               // scroll: el slide no se toca
+        if (!capturo) {
+          capturo = true;
+          try { card.setPointerCapture(e.pointerId); } catch { /* sin captura: el gesto igual funciona */ }
+        }
       } else if (vertical) return;
       const d = Math.min(idx0 * w, Math.max(-(orden.length - 1 - idx0) * w, dx));
       track.style.transition = 'none';
@@ -1239,6 +1268,7 @@ function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, v
       activo = false;
       if (vertical) return; // gesto vertical: jamás cambia de slide
       const dx = e.clientX - x0;
+      if (Math.abs(dx) > 10) suprimirClick = true; // fue desliz: su click no elige barras
       track.style.transition = '';
       const umbral = Math.max(50, w * 0.18);
       const target = Math.abs(dx) > umbral
@@ -1247,15 +1277,23 @@ function TarjetaDia({ serie, est, etiqueta, principal, cuenta = null, S, todo, v
       track.style.transform = `translateX(-${target * 100}%)`;
       if (target !== idx0) setVista(orden[target]);
     };
+    const clickCap = e => {
+      if (!suprimirClick) return;
+      suprimirClick = false;
+      e.stopPropagation();
+      e.preventDefault();
+    };
     card.addEventListener('pointerdown', abajo);
     card.addEventListener('pointermove', mover);
     card.addEventListener('pointerup', soltar);
     card.addEventListener('pointercancel', soltar);
+    card.addEventListener('click', clickCap, true);
     return () => {
       card.removeEventListener('pointerdown', abajo);
       card.removeEventListener('pointermove', mover);
       card.removeEventListener('pointerup', soltar);
       card.removeEventListener('pointercancel', soltar);
+      card.removeEventListener('click', clickCap, true);
     };
     // re-vincular cuando cambia el tipo de alcance: `orden` vive en esta
     // clausura y debe coincidir siempre con las vistas actuales

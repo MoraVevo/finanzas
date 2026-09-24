@@ -428,6 +428,18 @@ svg.icono-ui { width: 15px; height: 15px; vertical-align: -2.5px; }
   border-radius: 9px; pointer-events: none; box-shadow: var(--shadow);
 }
 
+/* Etiqueta de gráfica: el dato completo del elemento tocado (los <title>
+   nativos son casi invisibles en táctil). Flota anclada al elemento y no
+   captura toques: leer no interrumpe el gesto. */
+.etq-grafica {
+  position: absolute; z-index: 4; pointer-events: none;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 11px; padding: 6px 10px; box-shadow: var(--shadow);
+  font-size: 11.5px; line-height: 1.5; white-space: nowrap; text-align: left;
+}
+.etq-grafica .tit { color: var(--muted); font-size: 10px; font-weight: 600; }
+.etq-grafica .fila-etq { font-weight: 700; }
+
 /* Registros futuros cuya fecha ya pasó */
 .fila-vencida { opacity: .72; }
 .fila-vencida .titulo { text-decoration: line-through; text-decoration-color: var(--muted); }
