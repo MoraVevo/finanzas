@@ -377,8 +377,8 @@ function VistaRango({ S, todo }) {
       <div class="stat-box"><div class="etq">Cambio 3 m</div>
         <div class="val" style=${{ color: delta3m > 0 ? 'var(--gasto)' : 'var(--ingreso)' }}>${delta3m > 0 ? '▲' : '▼'} ${fmtFicha(Math.abs(delta3m))}</div></div>`
       : html`
-      <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
-      <div class="stat-box"><div class="etq">Gasto / día</div><div class="val">${fmtFicha(Math.round(promDia))}</div></div>
+      <div class="stat-box"><div class="etq">Salida</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
+      <div class="stat-box"><div class="etq">Salida / día</div><div class="val">${fmtFicha(Math.round(promDia))}</div></div>
       <div class="stat-box"><div class="etq">Mayor gasto</div>
         <div class="val" style=${{ fontSize: '13px', lineHeight: 1.35 }}>
           ${catTop ? html`<span style=${{ display: 'inline-flex', alignItems: 'center', gap: '3px', justifyContent: 'center' }}>
@@ -404,9 +404,9 @@ function VistaRango({ S, todo }) {
       </div>
     </div>` : html`
     <div class="stats-grid-3">
-      <div class="stat-box"><div class="etq">Gasto</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
       <div class="stat-box"><div class="etq">Ingreso</div><div class="val m-ingreso">${fmtFicha(st.ingreso)}</div>
         ${st.deTerceros > 0 && html`<div class="etq" style=${{ marginTop: '2px' }}>incluye ${fmtFicha(st.deTerceros)} de terceros</div>`}</div>
+      <div class="stat-box"><div class="etq">Salida</div><div class="val m-gasto">${fmtFicha(st.gasto)}</div></div>
       <div class="stat-box"><div class="etq">Deudas por pagar</div>
         <div class="val" style=${{ color: deudas.total > 0 ? 'var(--gasto)' : 'var(--muted)' }}>${fmtFicha(deudas.total)}</div>
         <div class="etq" style=${{ marginTop: '2px' }}>${deudas.sinIngresoFijo
@@ -415,10 +415,12 @@ function VistaRango({ S, todo }) {
     </div>
     <div class="stats-grid-3">
       <div class="stat-box"><div class="etq">${ahorro3 >= 0 ? 'Ahorro' : 'Desahorro'}</div>
-        <div class="val" style=${{ color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : '−'}${fmtFicha(Math.abs(ahorro3))}</div>
+        <!-- el signo vive en la palabra: "Desahorro −500" es doble negativo
+             (desahorrar negativo es ahorrar) y se prestaba a confusión -->
+        <div class="val" style=${{ color: ahorro3 >= 0 ? 'var(--ingreso)' : 'var(--gasto)' }}>${ahorro3 >= 0 ? '+' : ''}${fmtFicha(Math.abs(ahorro3))}</div>
         ${st3.aTerceros > 0 && html`<div class="etq" style=${{ marginTop: '2px' }}>sin ${fmtFicha(st3.aTerceros)} a terceros</div>`}
         ${st3.aTerceros < 0 && html`<div class="etq" style=${{ marginTop: '2px' }}>con ${fmtFicha(-st3.aTerceros)} devueltos</div>`}</div>
-      <div class="stat-box"><div class="etq">Gasto / día</div>
+      <div class="stat-box"><div class="etq">Salida / día</div>
         <div class="val">${fmtFicha(Math.round(promDia))}</div></div>
       <div class="stat-box"><div class="etq">Mayor gasto</div>
         <div class="val" style=${{ fontSize: '13px', lineHeight: 1.35 }}>
