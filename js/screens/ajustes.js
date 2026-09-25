@@ -8,7 +8,7 @@ import { uid, textoAEntero, enteroATexto, isoDia, fmtConMoneda } from '../util.j
 import { exportarCSV, exportarJSON, importarJSON, copiarParaIA, copiarRespaldoJSON } from '../export.js';
 import { ICONO_ETIQUETA, IconoCat } from '../iconos.js';
 
-const VERSION = '1.93';
+const VERSION = '1.94';
 
 export default function Ajustes() {
   const S = useStore();

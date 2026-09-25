@@ -186,11 +186,10 @@ export function Segmentado({ opciones, valor, onChange, onArrastre, onFin }) {
     const seg = ref.current;
     if (!seg) return;
     const abajo = e => {
-      try { seg.setPointerCapture(e.pointerId); } catch { /* sin captura: igual funciona */ }
       movio.current = false;
       const r = seg.getBoundingClientRect();
       const i = Math.max(0, opciones.findIndex(o => o[0] === valor));
-      drag.current = { idx: i, iniX: e.clientX, dx: 0, w: (r.width - 6) / n || 1 };
+      drag.current = { idx: i, iniX: e.clientX, dx: 0, w: (r.width - 6) / n || 1, capturo: false };
       forzar(f => f + 1);
     };
     const mover = e => {
@@ -198,6 +197,13 @@ export function Segmentado({ opciones, valor, onChange, onArrastre, onFin }) {
       if (!g) return;
       g.dx = e.clientX - g.iniX;
       if (Math.abs(g.dx) > 6) movio.current = true;
+      // la captura del pointer NACE con el gesto horizontal, no con el toque:
+      // si se captura de entrada, el click derivado aterriza en el contenedor
+      // y tocar la pestaña nunca la elige (visto en iOS)
+      if (movio.current && !g.capturo) {
+        g.capturo = true;
+        try { seg.setPointerCapture(e.pointerId); } catch { /* sin captura: el gesto igual funciona */ }
+      }
       onArrastre?.(Math.max(-1, Math.min(1, g.dx / (g.w * n))));
       forzar(f => f + 1);
     };
@@ -224,9 +230,11 @@ export function Segmentado({ opciones, valor, onChange, onArrastre, onFin }) {
 
   const g = drag.current;
   const base = g ? g.idx : idx;
-  const dx = g ? g.dx : 0;
+  // el pulgar vive DENTRO del cuerpo: por mucho que el dedo siga, su viaje
+  // se acota a [0, n-1] anchos de pestaña — nunca sale del segmento
+  const desplazamiento = g ? Math.max(0, Math.min(n - 1, base + (g ? g.dx / g.w : 0))) : idx;
   return html`<div class="seg" ref=${ref} style=${{ '--n': n }}>
-    <div class=${'seg-thumb' + (g ? ' sin-trans' : '')} style=${{ transform: `translateX(calc(${base * 100}% + ${dx}px))` }}></div>
+    <div class=${'seg-thumb' + (g ? ' sin-trans' : '')} style=${{ transform: `translateX(${desplazamiento * 100}%)` }}></div>
     ${opciones.map(([v, t]) => html`<button key=${v} type="button"
       class=${'seg-btn' + (v === valor ? ' sel' : '')}
       onClick=${() => { if (movio.current) { movio.current = false; return; } onChange(v); }}>${t}</button>`)}
